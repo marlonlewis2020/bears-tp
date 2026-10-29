@@ -1,0 +1,2168 @@
+7beb2c6d42c4807b
+dd610f6b4899a712
+c7ff9f7cbd7894b1
+ff62a5c213871af4
+c0999d9c7b469341
+3aebbd92b11fc3dd
+3bf16b042eb3c92e
+54b65995a96c4c77
+Saturday 5:45 AM
+I am describing a potential trading bot for myself. I have a low risk appetite and a budget of 300 USD. I want to  see month over month growth each month, even if some trades in that month fail, the strategy followed should ensure that generally and for a majority of the months growth profits are seen month over month with no loss too great to be critical. The goal is to grow month over month, with an initial investment of as low as 50 USD. Ideally, if I invest 50 USD or more I want to earn at least 200 USD (400%) as profit after a full 30 days. But, as a baseline goal, the minimum profit after 30 days should be 100% of that month's capital investment. Using the 50 USD capital as example, the minimum profit should be 50 USD, resulting in 'opening balance (including the month's 50 USD capital)' + 'minimum profit'.
+
+If bots can request user confirmation, then The bot should request confirmation from the user regarding the capital to use for each new month. This should be requested once the bot is started every 30 days after. If no confirmation is given by the 3rd day of the request, then no more than 30 USD is used from the balance on the account. If the account does not have 30 USD then no trading is done until account is loaded. Once account is loaded, the user confirmation is requested.
+
+Once the month's capital in set/confirmed, the bot should trade daily when market conditions are favorable, and multiple times per day whenever market conditions are favorable and favorable trades appear. The bot should learn from all successful and failed trades to improve on its strategy for all future trades. 
+
+All trades should be made with the goal in mind. Once the ideal target is reached within 30 days, the bot should enter a cruise mode until the end of the 30 day window. This mode only makes small trades when high probability wins are available, investing only from goal excess. For example, if the goal was 200 USD as profit from a 50 USD investment, anything over the 'opening balance' + 'profit goal' (example 50 + 200) is considered excess. From the excess, only 10%-20% of excess can be used for any single trade for the rest of the 30 days, and only on trades that have a high probability of winning. If the excess is too low or falls below 5 USD, no trade should be made, as the goal is to secure the profit goal. 
+
+Marlon, most of the bot controls you described can be built—including monthly confirmation, conditional trading, loss limits, and cruise mode. The conflict is between your low risk appetite and the required 100%–400% monthly profit. Those returns cannot credibly be treated as minimum outcomes while also keeping losses small. Losing months must remain an accepted possibility.
+
+FINRA specifically warns that day trading is generally unsuitable for people with limited resources and low risk tolerance. The SEC also cautions against claims that AI can deliver high guaranteed returns with little risk. These warnings apply to the expectations, even when you build the bot yourself.
+
+I would turn your description into the following proposed specification.
+
+1. Separate capital, reserves, and profit
+
+The bot should distinguish these amounts:
+
+Term	Meaning
+Account equity	Account value, including unrealized gains/losses
+Cycle capital	Amount you authorize for the current 30-day trading window
+Protected reserve	Funds outside the bot’s permitted trading allocation
+Net trading profit	Trading gains minus losses and all trading costs; deposits excluded
+Profit target	An aspiration used for monitoring and cruise mode—not a promised result
+
+For your example:
+
+Authorized capital	Aspirational profit	Required cycle balance
+$50	$50 — 100%	$100
+$50	$200 — 400%	$250
+
+If the account contains $300 but you authorize $50, the other $250 must remain outside the bot’s trading allocation. A separate account or subaccount is preferable where supported; a software allocation alone does not prevent account-wide margin exposure.
+
+New deposits must never count as profit. An account can grow because you added money while the trading strategy is losing.
+
+2. Monthly confirmation and the $30 fallback
+
+Yes, a custom bot can request confirmation through an app, dashboard, email link, or supported messaging integration.
+
+Your authorization rules can work as follows:
+
+On startup, request the amount to allocate.
+While awaiting confirmation, place no new trades.
+Repeat the request at each 30-day renewal.
+If unanswered after 72 hours, allocate exactly $30 only when at least $30 of eligible, unallocated funds is available.
+Otherwise, remain paused.
+When a deposit arrives during that insufficient-funds pause, request confirmation again. The deposit itself does not authorize trading.
+Late confirmation can change the allocation for the remaining cycle, but cannot override a loss-limit suspension.
+
+The $30 is trading capital, not permission to lose $30. Loss limits still apply.
+
+For clear accounting, I suggest starting the first 30-day performance window when capital is allocated. At renewal, pause new entries while awaiting the next allocation, while continuing to manage any existing positions safely.
+
+3. Make loss limits stronger than profit targets
+
+The bot should never increase risk because it is behind its target or approaching day 30.
+
+These are illustrative starting controls for testing—not proven safe settings:
+
+Control	Proposed rule	With $50 capital
+Planned loss per trade	Maximum 0.25% of the lower of opening capital or current cycle equity	Initially $0.125
+Aggregate open risk	Maximum 0.5% on the same basis	Initially $0.25
+Daily loss trigger	Halt at 1% of opening cycle capital	$0.50
+Cycle loss trigger	Halt at 3% of opening cycle capital	$1.50
+Recovery trading	No doubling stakes, martingale, or increasing risk after losses	—
+Restart after cycle halt	Explicit review and authorization required	—
+
+Loss calculations should include realized losses, unrealized losses, and costs. Reaching a limit should cancel pending entries and initiate the defined position-exit procedure.
+
+These are intervention thresholds, not guaranteed loss ceilings. Market gaps, slippage, or execution failures can produce larger losses; FINRA notes that stop orders may execute materially away from the stop price.
+
+At $50, these small risk allowances may be incompatible with a broker’s minimum trade size or costs. If so, the correct action is to skip the trade. For perspective, $1 in costs consumes 2% of $50.
+
+4. Trade only when a tested opportunity exists
+
+The bot can evaluate opportunities daily and take multiple trades when justified. There should be no minimum daily trade count.
+
+Every entry should require:
+
+A defined, tested signal with positive expected value after costs.
+Acceptable spread, liquidity, and data quality.
+Position size within the remaining risk allowance.
+No excessive exposure to correlated trades.
+Healthy broker connectivity and confirmed order status.
+
+“High probability of winning” nestom application connected to Deriv.
+
+However, using Deriv does not resolve the conflict between low risk and targeting 100%–400% monthly profit. Those targets must remain aspirations, with permission for the bot to finish a month flat or at a controlled loss.
+
+For your requirements, these are the main choices:
+
+Route	Fit for your bot	Main concern
+Options through Deriv’s API	Defined contract cost makes maximum-loss budgeting easier	A losing contract can consume its full purchase price
+Multipliers through Deriv’s API	Supports directional trading with stop-loss and take-profit controls	Amplified exposure can consume the stake quickly
+CFDs through Deriv MT5	Flexible position management and trading strategies	Margin, leverage, and minimum position sizes complicate a $50 risk budget
+
+Deriv documents Options and Multipliers API access, multiplier risk controls, and separate CFD specifications. Available instruments and conditions must be checked for your account and location.
+
+My recommendation is a custom, demo-first bot using Deriv’s API, initially testing one contract type and one market. This gives us control over your authorization rules, persistent records, risk checks, and strategy evaluation.
+
+The most important constraint is minimum trade size. Under the illustrative 0.25% risk limit discussed earlier:
+
+Authorized cycle capital	Maximum planned loss per trade
+$30	$0.075
+$50	$0.125
+$300	$0.75
+
+These amounts are risk allowances, not necessarily permitted Deriv stakes. Deriv currently advertises options starting from $1, although the actual minimum must be verified for the selected contract. A $1 full-loss stake represents 2% of $50 and approximately 3.33% of $30—already above that proposed risk limit. The bot should skip an incompatible trade rather than increase risk automatically.
+
+I would therefore carry your requirements forward with these implementation rules:
+
+Monthly authorization: Request capital confirmation; pause new entries for up to 72 hours; then apply your $30 fallback only if sufficient eligible funds exist.
+Capital separation: Keep your remaining budget outside the trading allocation, preferably outside the active trading account.
+Pre-trade validation: Check contract availability, quoted cost, maximum possible loss, existing exposure, and remaining loss allowance.
+Cruise mode: Protect opening capital plus realized target profit; trade only from excess, using your 10% default and 20% ceiling. Stop when excess falls below $5.
+Recovery after interruption: Reconcile open contracts with Deriv before resuming, so a connection failure cannot cause duplicate orders.
+Learning: Log every outcome, but test strategy changes before deploying them. The learning component cannot loosen risk limits.
+No target chasing: Never increase stakes because the month is ending or profits are behind schedule.
+
+The next step is to test whether any selected Deriv contract can fit your $30–$50 allocation and acceptable loss per trade. Until that is established, the bot can be technically functional without being suitable for live trading with your risk appetite.
+
+Yes, there are contract types that support it. These include, Multipliers, Digital Options (Rise/Fall, Higher/Lower), and CFDs.
+
+Yes—those are relevant Deriv product types. The distinction is whether a particular trade fits your loss allowance, rather than simply whether you can open it with $30–$50.
+
+We can design the bot to support all three, with separate risk calculations:
+
+Product	How the bot should assess risk
+Digital Options: Rise/Fall, Higher/Lower	Budget for losing the entire contract purchase price. Do not rely on an early exit to reduce maximum risk.
+Multipliers	Distinguish the stake from the intended stop-loss. For conservative capital protection, budget for the full stake being lost.
+CFDs	Calculate position size from the stop distance, instrument specifications, and costs, with an allowance for slippage. Margin required to open the trade is not its potential loss.
+
+Deriv documents multiplier stop-loss controls and stake-based stop-out, while its CFD specifications define instrument-specific minimum sizes and margin requirements.
+
+I would accept these as supported product categories in your specification, then make the bot validate each proposed trade before entering it.
+
+The decision sequence would be:
+
+Confirm the product is available for your account.
+Obtain the current quote and applicable trade specifications.
+Calculate the potential loss and total costs.
+Check that the trade fits both the monthly allocation and remaining risk allowance.
+Evaluate the strategy’s expected return against the quoted price.
+Execute only if every check passes; otherwise skip.
+
+For digital options, “high probability” must also account for the payout. For example, if a $1 contract returns $1.80 total when successful, the net winning profit is $0.80. Its break-even win rate is:
+
+$$ p=\frac{1}{1+0.80}=55.56\% $$
+
+A 55% win rate would therefore lose money on average under that example, even though most trades win.
+
+Your cruise rules can remain consistent across products: maximum commitment of 10% of available excess by default, never exceeding 20%, with aggregate exposure controlled too. For CFDs, this must constrain potential loss and margin exposure; for options, it constrains purchase price.
+
+The remaining design choice is your acceptable loss, because the earlier 0.25% per-trade and 3% per-cycle limits were my illustrative proposals—not limits you selected. We should establish that independently of the profit target:
+
+On a $50 monthly allocation, what is the maximum total loss you would accept before the bot stops for the remainder of that cycle: $2.50, $5, or another amount?
+
+$10 USD would be the maximum total loss on a $50 USD allocation. However, the intention is to grow the account profits month over month until it contains enough for a monthly allocation of at least $1,000 USD just from profits and the initial deposit of $50 USD to $100 USD.
+
+Understood. Your objective is to grow an initial $50–$100 into an account that can fund a $1,000 trading allocation, using retained profits rather than regular deposits. The bot should support that objective while putting loss controls ahead of return targets.
+
+Your confirmed limit is $10 maximum loss on a $50 allocation—a 20% cycle loss allowance. That is substantial risk: falling from $50 to $40 requires a 25% gain to recover. It should be described as your maximum tolerance, rather than a loss the bot routinely aims to use.
+
+I would update the specification as follows:
+
+Item	Bot requirement
+Initial funding	$50–$100
+Account growth	Retain net trading profits for potential reinvestment
+Long-term milestone	At least $1,000 available for an authorized monthly allocation
+Monthly allocation	Confirmed by you every 30-day cycle; account growth does not automatically authorize greater exposure
+Confirmed loss limit	$10 for a $50 allocation
+Larger allocations	Require an explicitly approved loss limit; do not automatically scale the 20% allowance
+Profit targets	Track your 100% baseline aspiration and 400% ideal aspiration without increasing risk to reach them
+Cruise mode	Apply your excess-only trading rules after the ideal profit target is realized
+Losing cycle	Stop at the loss limit; do not automatically replenish the allocation from reserves
+
+The loss limit needs an exact definition. I would interpret your $10 as the maximum net cycle loss relative to opening capital, including trading costs.
+
+For a $50 cycle:
+
+The opening capital is $50.
+The loss floor is $40.
+Before opening any trade, the bot checks that existing exposure plus the proposed trade’s maximum loss cannot take the cycle below that floor.
+If no permitted trade fits the remaining allowance, the bot stops early.
+
+This matters because waiting until losses reach $10 before stopping could be too late if other trades remain open.
+
+For example, if settled cycle equity is $43 and there are no open positions, only $3 of loss capacity remains. The bot cannot open contracts with a combined maximum loss above $3.
+
+For Multipliers, Deriv states that losses are capped at the initial stake, so budgeting the full stake provides a conservative exposure measure. High multipliers can still cause rapid loss of that stake. For CFDs, a stop-loss alone cannot establish an absolute $10 ceiling because execution can differ from the stop price.
+
+There is also a separate profit-giveback question: a $40 floor would technically allow a cycle that rises from $50 to $90 to fall back to $40 before stopping. Your specification should therefore include a trailing profit-protection rule before cruise mode begins. Its threshold remains to be defined.
+
+The funding milestone itself is straightforward:
+
+Initial deposit	Net retained profit needed to reach $1,000
+$50	$950
+$100	$900
+
+There is no reliable completion date until a strategy demonstrates positive results after costs. Reinvestment can compound an established trading edge; it cannot create one.
+
+For now, I would keep the initial live allocation at $50, retain profits separately, and require your approval before increasing either the allocation or dollar loss limit. Reaching a larger balance should expand your choices—not automatically expand what the bot can lose.
+
+After ever trade win where the account balance is above the month's starting balance, the floor is recalculate at 20% of the current balance. Otherwise, the floor remains the opening floor amount.
+
+Understood—20% is the permitted drawdown, so the protective floor is 80% of the qualifying balance.
+
+One distinction needs clarification: should the floor stay at its highest established level, or return to the opening floor when a trade loses?
+
+I recommend keeping the highest established floor:
+
+$$ \text{New floor}=\max(\text{Previous floor},\ 80\%\times\text{Balance after qualifying win}) $$
+
+A qualifying win is a settled winning trade that leaves the cycle balance above its opening balance.
+
+For a $50 allocation:
+
+Event	Cycle balance	Protective floor
+Cycle opens	$50	$40
+Winning trade	$60	$48
+Losing trade	$55	$48
+Winning trade	$70	$56
+Losing trade	$65	$56
+
+Returning the floor to $40 after a loss would undo the protection established by earlier wins. Keeping the highest floor also means a later, smaller win cannot lower it.
+
+Two related rules:
+
+Calculate this using the authorized cycle’s balance, excluding protected reserves and additional deposits.
+Once cruise mode begins, its protected amount takes precedence whenever it is higher. With $50 capital and $200 realized profit, the floor remains at least $250.
+
+Before every entry, the bot must account for all open trades’ potential losses against the remaining room above the floor.
+
+Should I use the floor that never decreases, as illustrated, or your literal fallback to the opening floor after a nonqualifying trade?
+
+Floor never decreases.
+
+Confirmed: the protective floor can rise during a 30-day cycle, but never decrease.
+
+Opening floor: 80% of authorized cycle capital.
+After each settled winning trade above the cycle’s opening balance:
+Floor = MAX(previous floor, 80% × current cycle balance)
+After losses or other nonqualifying trades: retain the previous floor.
+During cruise mode: also protect opening capital plus the realized ideal profit target; use whichever floor is higher.
+Before ev automated tests passed. Browser visual testing and authenticated Deriv demo trading remain unverified. Setup instructions are included in README.md.
+
+Real-money trading is disabled. The strategy is experimental; this version records results for analysis but does not automatically retrain itself.
+
+Saturday 8:56 AM
+
+Updates:
+
+Allow the user to determine the number of days a cycle is.
+Allow the user to select and use live real markets to trade in for the demo. The user can select and trade in up to 5 markets simultaneously.
+Make the trade journal a scrollable table with 8 trades showing in the window.
+Allow the user to close notification, like notification of saved configurations, etc.
+
+Download 
+personal-deriv-bot-v1.1.zip
+
+Updated with:
+
+Cycle length: choose 1–365 days before approval.
+Live market demo: select up to five markets simultaneously, sharing one allocation and protective floor.
+Trade journal: eight visible trades, with scrolling and a fixed header.
+Notifications: dismiss buttons for saved settings, errors, and cycle notices.
+
+On Windows, run start-live-demo.bat for live prices with fictional funds. Preserve your existing data folder when upgrading.
+
+Verified: 44 automated tests, desktop/mobile browser checks, and five concurrent live-feed paper trades through settlement. Real-money trading remains disabled.
+
+Now, let's talk about possible updates.
+
+The next useful updates fall into three areas: strategy quality, trading controls, and ease of use.
+
+Possible update	What it would add	Priority
+Historical backtesting	Test strategies against past market data, including payouts and costs, before using them in demo.	Highest
+Strategy comparison	Run several strategies in paper mode and compare net returns, drawdowns, and consistency.	Highest
+Stronger profit protection	Let you tighten the trailing floor as profits grow—for example, reduce permitted drawdown after reaching milestones.	High
+Daily loss and losing-streak limits	Pause new entries after a defined daily loss or consecutive losses, even when the cycle floor remains intact.	High
+Market-specific settings	Set different stakes, contract durations, strategies, and trading hours for each selected market.	High
+Performance dashboard	Show equity versus floor, cycle returns excluding deposits, drawdown, and performance by market and strategy.	High
+External notifications and approvals	Receive cycle approval requests, floor alerts, and connection warnings without keeping the dashboard open.	Medium
+Controlled learning	Develop candidate strategy changes from recorded results, test them separately, and require approval before deployment.	Later
+
+My preferred next step is historical backtesting plus strategy comparison. The current bot has execution and capital controls, but its momentum strategy has no established profitable edge. Those updates would help us decide which strategies deserve further demo testing.
+
+Would you like to discuss how the bot chooses trades, how it protects profits, or how you manage it day to day first?
+
+I want the user to be able to select the markets for the app to trade in. The app should only suggest the best markets after reading data from credible, live, online sources available. When the market(s) are selected, their live market observation mini-graphs should be displayed in a row with abbreviated names included, where clicking on name or mini-graph displays it in the Market observation section below the row of selected market mini-graphs. Is this possible?
+
+If so, consider including or limiting these markets in a market line-up for the user to select from:
+
+currency pairs - EUR/USD, AUD/USD, GBP/USD
+Derived indices - Volatility 100 (1s) Index & Volatility 75 (1s) Index, Step Index, Crash 500 / Boom 500
+
+Let me know if this is feasible.
+
+Additionally...
+Each run of the demo should train the algorithm for the specifically selected market(s), learning when to enter trades and when to not enter a trade.
+Markets without trained algorithm/bot, should use a default algorithm until trained with training data. Before an algorithm can be considered trained, it should have at least 500 trades as a baseline. Therefore, each market should be logging trades and their success in a native database on the PC. If a specific market algorithm does not have the required baseline number of recorded trades to be considered trained, the training completion should be indicated next to the market in the list of markets when selecting a market to start the trader in.
+
+A section of the app should indicate which markets have a fully or partially trained algorithm/bot. This section should then allow for a downloadable algorithm/bot file to be downloaded so that it can be plugged into any instance of this app via a file upload, even if the instance of the app does not have the benefit of the trading/training data.
+
+This means that the app should be configured so that each market has a configurable trader section that determines the type of trading algorithms (even a section to upload a custom python trading script for that market), and all the possible the configurable values for the algorithm, etc.
+
+Assess these in light of the future updates you just shared.
+
+Yes, this is feasible. Your proposal would turn the app into a market-specific trading and research platform. The market selection and mini-graphs are straightforward; dependable learning, model portability, and custom Python uploads require a larger upgrade.
+
+These are proposed changes—the current v1.1 records trades but does not train or import algorithms.
+
+Your proposed market line-up
+
+I checked Deriv’s public market catalog and available contract metadata. All eight markets were listed, with one important execution difference:
+
+Market	Suggested abbreviated label	Fit with the current app
+EUR/USD	EUR/USD	Rise/Fall listed; trade when open and the quote fits
+AUD/USD	AUD/USD	Rise/Fall listed; same checks
+GBP/USD	GBP/USD	Rise/Fall listed; same checks
+Volatility 100 (1s) Index	V100–1s	Rise/Fall listed
+Volatility 75 (1s) Index	V75–1s	Rise/Fall listed
+Step Index	STEP100	The catalog identifies the original instrument as Step Index 100; Rise/Fall listed
+Crash 500 Index	CRASH500	Needs another execution adapter
+Boom 500 Index	BOOM500	Needs another execution adapter
+
+Crash/Boom currently list Multipliers and Accumulators through the Options API, rather than Rise/Fall. Deriv also offers CFD routes through MT5/cTrader. We should therefore distinguish available to observe from supported for trading by this app. Final availability must be checked for the user’s account, selected product, duration, and stake.
+
+I would use these eight as a curated line-up and retain your maximum of five selected markets.
+
+Market suggestions should explain suitability
+
+The user should remain responsible for selecting markets. The app can suggest markets based on current evidence, without automatically selecting or switching them.
+
+Suitable inputs include:
+
+Deriv’s live feed: prices, data freshness, market availability, supported contracts, quoted payouts, and minimum trade sizes.
+The app’s own validated results: performance of a compatible strategy in that market, after costs.
+For currency pairs: relevant economic announcements and official release calendars, with clearly identified sources.
+
+Each suggestion should show why it appeared, its source, when the data was updated, and any missing information. For example: “Market open; compatible quote available; model passed recent validation.”
+
+If data is stale or evidence is insufficient, the result should be “No recommendation available.”
+
+For the derived indices, external forex news should not be treated as a directional predictor. Deriv describes its synthetic prices as generated independently of external market data.
+
+The selected-market mini-graphs are practical
+
+After selection, the app can display a horizontal row containing up to five compact market panels. Each would contain:
+
+Abbreviated name and live mini-graph.
+Latest price and feed status.
+Training progress.
+Open-position indicator.
+
+Clicking either the name or graph would select that market in the larger Market observation section immediately below. The selected panel would be highlighted. On narrower screens, the row could scroll horizontally.
+
+Changing the displayed graph would not change which markets the bot is authorized to trade.
+
+Per-market learning needs more than a win/loss counter
+
+Each demo run can contribute training data for its selected markets. However, we should store the circumstances surrounding decisions, not just whether completed trades won.
+
+Record	What it should capture
+Market observation	Timestamp, price data, calculated features, and source
+Decision	Enter, wait, or reject—with the reason
+Proposed trade	Direction, product, duration, quote, and expected return
+Executed trade	Entry, settlement, costs, outcome, and strategy version
+Training run	Dataset period, model settings, results, and resulting version
+
+This matters particularly for learning when not to enter. Executed trades alone cannot show whether rejected opportunities would have performed better or worse. We can record hypothetical outcomes for skipped opportunities separately; those must never appear as actual trades or account profit.
+
+The existing local SQLite database is a useful foundation. Its current recent-200-trade statistic would need a separate cumulative eligible-trade counter for your 500-trade baseline.
+
+Training data must also preserve the distinction between:
+
+Fictional simulator outcomes.
+Live-price paper trades.
+Deriv virtual-account trades.
+
+Fictional random-walk trades should not qualify a real-market model as trained. Replaying the same dataset repeatedly should not inflate the count of unique training examples.
+
+Use 500 trades as a minimum baseline, with validation tracked separately
+
+Your threshold is workable as a product rule. I would display these states:
+
+State	Meaning
+Default algorithm	No eligible market-specific training history
+Collecting data: 240/500 — 48%	Partially complete baseline
+Baseline complete	At least 500 eligible trades; training or validation still pending
+Trained—validation pending	A fitted model exists but has not passed evaluation
+Validated model available	The model passed the defined evaluation checks
+Review required	Results have deteriorated or compatibility has changed
+
+Five hundred trades do not establish that a strategy is profitable. Validation should examine net results, drawdown, consistency across periods, and performance on later data excluded from training. Features must contain only information available at the decision time; otherwise future information can leak into training and exaggerate performance.
+
+The baseline should apply to a compatible profile: market + product + duration/timeframe + strategy version. Five hundred short-duration Rise/Fall trades should not automatically qualify a CFD strategy.
+
+The default algorithm can operate under the existing risk controls while collecting evidence. It must remain free to wait; reaching 500 trades should never become a reason to force entries.
+
+Downloadable and uploadable algorithms are feasible
+
+A dedicated Market Algorithms section could show each market’s profiles, training progress, validation status, active version, and export/import controls.
+
+An exported bot package should include:
+
+Market and product compatibility.
+Strategy version and configurable parameters.
+Feature definitions, preprocessing, and learned model state.
+Training counts, dates, provenance, and validation results.
+Required app/model format versions.
+
+That package can perform inference on another compatible installation without the original training database. However, independently reproducing its training results would require the underlying data.
+
+An imported profile should distinguish its reported history from local history—for example:
+
+Imported model: 820 source training trades · 0 local trades
+
+It should not fabricate 820 local database records. Partially trained checkpoints can also be exported, retaining their incomplete status. Resuming training may require additional training state, depending on the algorithm.
+
+Per-market configuration should sit beneath the shared risk engine
+
+Each market’s trader section can offer:
+
+Configuration area	Examples
+Algorithm	Default rules, trained model, imported profile, custom script
+Product	Supported Rise/Fall or a future Multipliers/CFD adapter
+Parameters	Indicator periods, entry thresholds, confidence thresholds
+Execution	Contract duration, requested stake, cooldown, trading hours
+Learning	Training schedule, dataset window, candidate model settings
+Lifecycle	Active version, previous version, validation status, rollback
+
+Global allocation, floor, exposure, and cruise limits must remain authoritative. A market profile can request a trade; it cannot override those limits.
+
+Custom Python uploads are possible, but they introduce executable code into the PC. I would put that feature in an advanced section, with explicit activation, restricted operating-system isolation, resource limits, and no broker credentials. Scripts should return signals to the main engine rather than place orders themselves. A separate Python process alone is insufficient isolation.
+
+How this changes the earlier update priorities
+
+Stage	Recommended scope
+Next: market workspace	Curated line-up, five mini-graphs, click-through observation, source-backed suggestions, market profiles, richer database logging, and training progress
+Then: research and learning	Historical backtesting, strategy comparison, per-market training, chronological validation, versioning, and rollback
+Then: portability	Export/import of trained profiles and partial checkpoints, compatibility checks, and imported-model status
+Additional execution and extensions	Multipliers support for Crash/Boom, isolated custom Python scripts, and external notifications
+
+My recommendation is to build the market workspace and training-data foundation first. That gives subsequent learning and portable models the evidence and compatibility controls they need, while preserving your existing capital protection rules.
+
+Let's further explore these other potential updates and the assess and prioritize. 
+
+Can each market algorithm (whether partially or fully trained) indicate its success/win rate? Each rate starting at 0, and adjusting as more trades and training is done in the demo. When live trading is enabled through its Deriv integration, the data should still be stored and algorithms trained as well. 
+
+I also want the option to create a new bot/algorithm for a market. The user can then name it and select it for training on all or a subset of the collected data specific to that market. The bot will adjust the algorithm and configurations necessary to be most successful at picking and winning trades in that market. 
+
+All algorithms will display their win rate.
+
+Yes—all of these updates are feasible. They fit together as a Bot Manager, where each market can have several named algorithms, each with its own configuration, training history, versions, and performance record.
+
+The important distinction is between training an algorithm on historical data and measuring how it performs on new trades.
+
+Every algorithm can display its win rate
+
+A new bot can initially show:
+
+Win rate: 0% · 0 settled trades · No results yet
+
+That satisfies your preferred starting display without suggesting that it has already lost trades.
+
+For the primary trading win rate, I recommend:
+
+Winning trades ÷ all settled trades × 100
+
+A win means positive net profit after trading costs. Break-even trades remain in the denominator; open positions, rejected orders, and cancelled/refunded orders are shown separately.
+
+Each algorithm should display these results distinctly:
+
+Metric	What it measures
+Historical validation win rate	Performance on historical data excluded from training
+Forward demo win rate	New demo trades made after the algorithm’s version was established
+Live win rate	Settled real-money trades, once live integration is implemented
+Recent win rate	Results over a clearly stated recent window
+Training progress	Eligible training records collected toward the 500-trade baseline
+
+The main displayed rate should identify its source and sample size—for example, “Demo: 61% · 200 settled trades.” Training-set accuracy should not be presented as demonstrated trading success.
+
+Also show net profit, drawdown, and average win versus average loss alongside win rate. For example, 90 wins earning $0.10 each and 10 losses costing $1 each produce a 90% win rate but a $1 loss.
+
+Named bots and user-selected training data
+
+The proposed creation process is practical:
+
+Select a market.
+Name the bot—for example, EUR/USD Session Filter.
+Choose an algorithm template or compatible imported model.
+Select its product, timeframe/duration, and configurable parameters.
+Select all compatible market data or a subset.
+Train and evaluate a candidate version.
+Select it for forward demo trading.
+
+Useful dataset filters would include:
+
+Filter	Purpose
+Date range	Test recent conditions or a broader history
+Trading session	Examine time-of-day differences
+Product and duration	Keep the training relevant to the intended trades
+Data source	Distinguish historical replay, paper demo, broker demo, and live
+Market conditions	Study volatility, trend, or other recorded conditions
+Data quality	Exclude incomplete, duplicate, or unreliable records
+
+Win-only or loss-only datasets should be available for diagnosis, but not presented as balanced training evidence. They omit part of the decision problem.
+
+A separate evaluation period should remain outside the training selection. Time-ordered evaluation is important because ordinary random splits can allow a model to learn from future observations while being evaluated on earlier ones.
+
+A newly created bot must earn its own performance record
+
+Suppose the PC contains 1,000 EUR/USD trades collected by the default algorithm. A new named bot may use compatible records from that dataset.
+
+Its display could then read:
+
+Training records: 1,000 / 500 baseline met
+Historical validation: 58% · 180 evaluated trades
+Forward demo: 0% · 0 settled trades
+
+It must not inherit the default bot’s win rate. Its historical evaluation must replay its own decisions against the market data.
+
+This makes storing price history, decision-time features, quotes, and skippedtrading version should remain identifiable and stable while its replacement is being evaluated. Updating a model should not alter an already-open trade’s management.
+
+Live and demo outcomes should retain separate labels and performance figures. Combining their training data can be an explicit option, because execution and settlement differences can affect results.
+
+For every version, preserve:
+
+Which data trained it.
+Which data evaluated it.
+Its configuration and creation date.
+Trades actually attributed to that version.
+The previous version for rollback.
+
+Your 500-trade requirement remains a minimum training-data baseline, not an automatic certificate of readiness. Retraining the same records repeatedly does not increase the number of unique training records.
+
+How I would prioritize the expanded requirements
+
+Priority	Update	Why it comes here
+1 — Foundation	Named bot registry, version identifiers, richer market/decision database, accurate per-bot metrics	Everything else depends on correct attribution and sufficient data
+2 — User controls	Market mini-graphs, training progress, per-market bot selection and configuration	Makes the system understandable and manageable
+3 — Research	Dataset selection, historical replay, chronological validation, strategy comparison	Establishes how candidates will be judged
+4 — Learning	Per-market training, constrained parameter tuning, candidate comparison and rollback	Adds adaptation to an established evaluation process
+5 — Portability	Export/import models, configurations, provenance, and reported performance	Allows reuse without fabricating local trading history
+6 — Advanced execution	Additional product adapters, isolated custom Python scripts, then separately validated live trading	Requires the earlier controls to be dependable
+
+Several named bots can research or run in shadow mode for the same market. Initially, I recommend one executing bot per selected market, with all five markets sharing your existing capital controls. This lets you compare algorithms without accidentally multiplying account exposure.
+
+The next substantive upgrade should therefore combine the bot registry, per-bot performance tracking, richer data collection, and the market workspace. Those provide the foundation for meaningful training rather than simply a rising trade counter.
+
+Let's further expand on the future updates potential:
+
+How about we establish a standard for portable "setup" files. Users will be able to buy and use as is, or configure these setup files for each market. They may also sell these files back to other users with their boasted success rates. These files are uploadable into the app as a proprietary file type.
+
+We should have several categories of setup files:
+
+bot - for full setup, including bot, algorithm and all variable configurations set.
+setup - configuration data for bots
+training - training to update a bot's configuration based on successful training on the data
+
+These files should have a standard format, that is also easy for a general user to fill/modify. Training data should be csv format.
+
+Yes. A standard package format would make bots easier to configure, transfer, update, and eventually sell. I would establish the format before building a marketplace, so every installation interprets the files consistently.
+
+The key distinction is between a complete bot, its settings, a trained update, and the raw data used for training.
+
+Proposed file categories
+
+The extensions below are working names:
+
+Category	Proposed extension	Contents	Import behaviour
+Bot	.tbot	Algorithm, learned model where applicable, configuration, market compatibility, documentation, and performance evidence	Creates a new bot or installs a specific version
+Setup	.tsetup	Configuration values for an identified compatible algorithm	Previews changes to an existing bot; does not replace its algorithm
+Training update	.ttrain	Learned model/state and configuration changes produced by training, plus evaluation results and provenance	Creates a candidate updated version of a compatible bot
+Training data	.csv	Market observations, decisions, trades, outcomes, or other supported training records	Adds eligible records to the local database; training is a separate action
+
+A CSV dataset and a trained update are different deliverables. Users could import CSV data to train their own bots, or import a .ttrain package containing the result of someone else’s training.
+
+A training update should identify the algorithm and version it requires. It must not silently apply to an incompatible bot.
+
+One shared format underneath the three package types
+
+I recommend a ZIP-based container with the proprietary extension, containing:
+
+Component	Purpose
+Manifest	Package type, standard version, identity, author, and compatibility
+Configuration	Readable settings and their values
+Algorithm/model	Required implementation or learned state
+Performance report	Results, evaluation conditions, and supporting evidence
+Documentation	Description and instructions
+Licence	Editing, sharing, commercial-use, and resale permissions
+Integrity information	Detects changes and, where signed, identifies the publisher
+
+This gives users a recognizable application-specific file while keeping the underlying structure portable.
+
+A proprietary extension does not itself provide encryption, copy protection, or exclusive ownership. Those would be separate commercial decisions.
+
+Make configuration easy through the app
+
+General users should mainly work through an editor, rather than manually editing package internals.
+
+The editor could provide:
+
+A plain-language description beside each setting.
+Supported values, defaults, and validation.
+Basic and advanced views.
+A preview of changes before applying them.
+Save setup, Export bot, and Restore previous version actions.
+
+For users who prefer manual editing, the configuration can remain readable JSON. For example:
+
+{
+  "format_version": "1.0",
+  "package_type": "setup",
+  "name": "EUR/USD Session Setup",
+  "market": "frxEURUSD",
+  "requires_algorithm": {
+    "id": "session-momentum",
+    "version": "1.2"
+  },
+  "settings": {
+    "duration_seconds": 300,
+    "fast_period": 10,
+    "slow_period": 40,
+    "cooldown_seconds": 120
+  }
+}
+
+The application would validate this against its registered algorithm definitions. A seller cannot make an invalid setting acceptable merely by declaring it valid in the file.
+
+Performance belongs to the exact configuration that produced it
+
+This is particularly important if users will sell setups with advertised success rates.
+
+A reported rate should identify:
+
+Required context	Example
+Market and product	EUR/USD, Rise/Fall
+Algorithm and configuration version	Version 1.2, configuration fingerprint
+Evidence source	Historical validation, forward demo, or live
+Evaluation period	Start and end dates
+Sample size	620 settled trades
+Outcome counts	Wins, losses, and break-even trades
+Financial results	Net trading profit, average win/loss, and drawdown
+Assumptions	Payouts, costs, execution method, and exclusions
+
+Changing performance-relevant settings creates a new configuration version. The original results remain visible as historical evidence, but they do not become the new configuration’s own results.
+
+For example:
+
+Purchased setup: Seller reports 68% across 620 demo trades.
+Buyer’s installation: Local demo 0% across 0 settled trades.
+Buyer modifies its entry threshold: New configuration—no evaluated results yet.
+
+This prevents users from modifying a successful setup and continuing to advertise the original rate as though the modified version achieved it.
+
+Separate claims from verification
+
+I would use explicit evidence labels:
+
+Label	What it establishes
+Seller-reported	The publisher supplied the figures
+Recomputed from supplied records	The app reproduced the arithmetic from the included records
+Reconciled with broker records	Applicable trade records were matched against broker information
+Locally evaluated	This installation generated the displayed results
+
+Recomputing a CSV does not prove that its trades occurred or that the dataset includes every loss. A signature establishes publisher identity and file integrity; it does not establish profitability.
+
+Therefore, editable descriptions may contain a seller’s claim, but the app’s calculated performance fields should be generated from identified evidence. No package should receive a blanket “verified winning bot” badge.
+
+Training CSV standards should support different record types
+
+One enormous CSV template would be difficult for general users to manage. I recommend separate templates sharing common identifiers.
+
+CSV template	Principal fields
+Prices	Market, UTC timestamp, price or OHLC values, timeframe, source
+Trades	Trade ID, bot/version, market, product, direction, entry/exit times, stake, costs, net profit, mode
+Decisions	Decision ID, market, timestamp, algorithm version, enter/wait/reject, reason, feature values
+
+Some products require additional fields: an option needs its duration and quoted payout; a CFD needs position size, entry/exit prices, and relevant charges.
+
+The importer should validate dates, units, duplicates, missing values, market identity, and product compatibility. It should show accepted and rejected row counts before committing the import.
+
+Your 500-trade baseline should count eligible unique records, not repeated imports of the same trades. Imported market data also must not alter account balances or appear as newly executed trades.
+
+Packages must not override the account’s controls
+
+A purchased bot can arrive fully configured and ready for demo evaluation. Importing it should still require reviewing its market, configuration, and permissions.
+
+The following should remain outside portable packages:
+
+API tokens and account credentials.
+Account balances and personal information.
+Authorization to use live money.
+Permission to weaken the global floor or exposure limits.
+
+A bot can propose orders; the app’s central risk engine decides whether they are permitted.
+
+Executable algorithms also need a separate trust boundary. Python’s own documentation warns that formats such as pickle can execute arbitrary code, and CPython does not provide an untrusted-code sandbox. A renamed file extension does not address that risk.
+
+For the first package standard, I recommend supporting registered built-in algorithms and controlled model formats. Arbitrary Python plugins should follow later with operating-system isolation.
+
+Selling and reselling need explicit permissions
+
+Being able to edit a purchased setup should not automatically grant permission to resell it.
+
+Each package should state whether it permits:
+
+Personal use.
+Modification.
+Redistribution.
+Resale of the original.
+Commercial distribution of derivatives.
+
+Modified packages should retain their parent package’s identity and author attribution. Their performance records should identify the modified version separately.
+
+Licensing information can travel with an offline file, but enforcement against copying is a separate problem. A future marketplace can add publisher identities, purchase entitlements, listings, and dispute handling.
+
+Revised priorities
+
+Priority	Deliverable
+1	Standard identifiers, bot/configuration versions, database attribution, and performance definitions
+2	Readable configuration schema, editor, .tsetup import/export, and CSV templates
+3	Per-market training, validation, and compatible .ttrain updates
+4	Complete .tbot packages, provenance, signatures, and permission controls
+5	Marketplace, publisher reputation, purchases, and resale workflows
+6	Isolated custom Python plugins and stronger commercial protection
+
+I would make Trading Package Standard 1.0 the next design specification. It should define the three package categories together, while implementing setup files and CSV imports first. That gives future training, full bot exports, and sales a consistent foundation.
+
+Show the prioritized list of updates and their corresponding app version proposed
+
+The current release is v1.1. I propose the following roadmap, with reliable data and evaluation established before automated learning or live trading.
+
+Priority	Proposed version	Main updates
+1	v1.2 — Market Workspace	Curated eight-market line-up; select up to five; live mini-graphs with abbreviated names; click to expand in Market Observation; source-backed market suggestions with timestamps and availability checks. Unsupported products remain observation-only.
+2	v1.3 — Bot Manager & Performance	Create and name market-specific bots; select one executing bot per market; per-bot configuration and version history; separate historical, demo, and live win rates; sample counts, net profit, drawdown, and 500-trade baseline progress.
+3	v1.4 — Data & Setup Standard	Richer local database for observations, decisions, trades, and provenance; validated CSV imports/exports; dataset selection; Trading Package Standard 1.0; configuration editor and .tsetup import/export.
+4	v1.5 — Backtesting & Validation	Historical replay; strategy comparison; chronological training/validation/test separation; cost-aware evaluation; explicit readiness criteria and reproducible performance reports.
+5	v1.6 — Market-Specific Learning	Train named bots on compatible market datasets; constrained configuration optimization; default algorithms until trained; candidate-versus-active model comparison; deterioration detection and rollback.
+6	v1.7 — Portable Bots & Training	Complete .tbot packages and .ttrain updates; compatibility checks; imported-versus-local performance labels; provenance, integrity checks, and licence permissions.
+7	v1.8 — Expanded Execution & Protection	Multipliers adapter for eligible markets, including Crash/Boom; product-specific sizing and recovery; configurable daily loss, losing-streak, and profit-protection controls; combined exposure testing.
+8	v1.9 — Remote Management	External approval requests and alerts; connection monitoring; backup/restore; operating-health dashboard; optional hosted deployment.
+9	v2.0 — Controlled Live Trading	Explicit live-account activation; broker reconciliation and recovery validation; separate live metrics; live-data collection and candidate training; deployment approval and rollback controls.
+10	v2.1 — Advanced Strategy Plugins	Isolated custom Python algorithms; approved dependencies; resource limits; controlled access to market data; signals routed through the central risk engine.
+11	v2.2 — Marketplace	Publisher profiles; package purchases and permitted resale; version-specific performance disclosures; evidence labels; entitlements, ratings, and dispute workflows.
+
+Release gates matter more than version numbers: 500 eligible trades establishes the training baseline, validation determines model readiness, and live trading requires its own execution checks. Marketplace performance claims should depend on the evidence standards introduced earlier.
+
+Let's discuss these additional features before including in the list of prioritized updates:
+Include a feature that allows the user to connect their Deric account to switch to live trading in real markets, with sufficient warnings and verifications before switching.
+
+Yes—assuming you mean Deriv. This would expand the proposed v2.0 Controlled Live Trading feature, rather than create a separate roadmap item. I would call it Deriv Account Connection & Live Activation.
+
+The app should distinguish three modes clearly:
+
+Mode	Prices	Money used
+Live-price paper demo	Current market data	Fictional local funds
+Deriv account demo	Broker market data	Deriv virtual funds
+Live trading	Broker market data	Real account funds
+
+Connecting an account must not automatically authorize trading. Deriv supports OAuth authorization without sharing the user’s password, as well as Personal Access Tokens. I would prefer a Connect with Deriv authorization flow for the finished app, subject to the application’s registration and integration requirements.
+
+Proposed activation process
+
+Connect and identify the account. Display the selected account, currency, balance, and whether it is real or virtual. Initially permit account inspection only.
+Pause demo entries. For the initial implementation, require existing demo positions to settle before switching modes. Retain their history separately.
+Select the live markets and bots. Check account-specific product availability, minimum stakes, durations, permissions, and current quotes.
+Approve live capital and cycle length. Show the opening floor, permitted loss allowance, stake limits, and aggregate exposure across all selected markets.
+Review warnings and verification results.
+Explicitly activate live trading. Use a clearly labelled action such as “Enable real-money trading”, followed by the normal Start entries control.
+
+Deriv provides separate public, demo, and real trading endpoints, so the application can enforce this distinction in its connection and execution logic.
+
+Warnings should be specific to the proposed allocation
+
+For a $50 allocation, the confirmation should explain:
+
+Real money is at risk.
+The opening protective floor is $40, representing a $10 planned loss allowance.
+The floor rises under your agreed rules; it is not insurance against execution, broker, or software failures.
+Demo and historical results do not guarantee live results.
+Which markets, bot versions, and settings will receive permission to trade.
+
+The warning should appear on first activation and when material exposure changes—not before every ordinary trade.
+
+Verification should produce clear outcomes
+
+Check	Proposed outcome if unsuccessful
+Account identity or real/demo status cannot be established	Block activation
+Insufficient funds or missing trading permission	Block activation
+Unsupported market, product, duration, or stake	Disable the affected selection
+Unresolved orders or broker/local-ledger mismatch	Block new entries until reconciled
+Selected bot has not passed the agreed validation requirements	Block automatic live execution
+Market data is stale or the connection is unhealthy	Block new entries
+
+Your 500-trade baseline should remain part of bot readiness, alongside validation. A high advertised win rate or imported “trained” label alone should not satisfy live activation.
+
+Several switching rules need to be explicit
+
+Demo approvals do not carry over into live mode. Real capital requires separate authorization.
+The $30 fallback must not activate real trading for the first time. During live onboarding, the user can separately enable that fallback for later cycle renewals. Otherwise, an unanswered live renewal pauses entries.
+Switching back to demo does not close real positions. Pause live entries, show outstanding positions, and continue their defined management until settled or deliberately closed where supported.
+Disconnecting or closing the app does not remove broker exposure. Show outstanding positions before disconnecting.
+Restarting restores live position monitoring, with new entries paused. It should not silently switch an existing real account into a simulated ledger.
+
+A persistent REAL MONEY indicator, selected account identifier, and visible pause control should remain on screen whenever live execution is enabled.
+
+Live learning can continue without changing the active bot unexpectedly
+
+Live trades would be recorded in the native database and attributed to their exact bot version. They could train candidate updates, while the executing version remains stable. Replacing it would require the agreed validation and deployment process; training must never loosen the central risk controls.
+
+I would retain this under proposed v2.0, with account connection, activation permissions, broker reconciliation, and recovery treated as release requirements. The current v1.1 remains demo-only; this discussion does not enable real-money trading.
+
+I'll implement all these versions, one at a time for testing over the next 2-3 days, starting today. Keep a record of completed implementations and my feedback on each until all are complete. If my feedback creates a need for further updates to be added, confirm with me the inclusion of the new feature, requirement or update, and then add it to list to track. Provide daily reminders until complete. Once complete, provide a report and recommendations based on all the implementations, my comments, etc.
+
+Done. I’ve created the 
+implementation and feedback tracker and scheduled daily evening reminders around 7 PM, starting today, until completion.
+
+I’ll record each version’s implementation, test results, your feedback, outstanding issues, and acceptance. Any new feature or requirement arising from feedback will need your confirmation before joining the approved backlog.
+
+Once completion is confirmed, I’ll produce the consolidated report and recommendations, then stop the reminders.
+
+Starting position: v1.1 is delivered, your testing feedback is pending, and v1.2 is next. Share results here as you test—I cannot automatically observe your PC.
+
+deriv-implementation-tracker.md
+Document
+The web-app should allow the user to setup an account using their verified email and password, or via their Gmail or Github accounts. If possible, two-factor should be enabled. If this authentication/security feature can be toggled on/off in the developer version for testing then that would be great as well.
+
+The user should also be able to personalize their personal account in an active session once logged in. Information, such as display image, name, username, etc.
+
+Yes—these are feasible and should be introduced before Bot Manager, because bots, trading histories, and Deriv connections will need clear account ownership.
+
+I’ve recorded this as CR-001: Accounts, Security & Profiles, pending your confirmation.
+
+Feature	Proposed behaviour
+Email/password registration	Verify email through an expiring link; support secure password storage and password recovery.
+Google/Gmail sign-in	Sign in through Google without granting access to the user’s inbox.
+GitHub sign-in	Authorize through GitHub without requesting repository access.
+Two-factor authentication	Authenticator-app codes with single-use recovery codes.
+Profile personalization	Edit profile image, name/display name, and unique username while logged in; changes persist immediately.
+Account management	Change password, reverify a changed email, manage connected sign-in methods, and sign out.
+Data separation	Keep each user’s bots, trading/training records, settings, and Deriv credentials separate.
+
+Google provides email-verification claims, while GitHub exposes verified-email information through its email API. We should check that information rather than assume every social-login account has supplied a usable verified email.
+
+For two-factor authentication, I recommend making it optional during paper-demo testing and required before real-money activation. Changing or recovering security settings should require appropriate identity checks. Email verification and two-factor authentication remain separate steps.
+
+The developer toggle is also feasible, with these boundaries:
+
+Controlled through developer startup configuration.
+Restricted to local development and a separate test identity/database.
+Clearly labelled “Development mode—authentication bypassed.”
+Real-money trading disabled while bypassed.
+Production refuses to start with authentication bypass enabled.
+
+Turning the bypass off would let you test the complete registration, sign-in, verification, and two-factor flows.
+
+Profile edits should preserve a stable internal account identity: changing a username must not change ownership of bots, purchases, or trading records. Linking Google or GitHub to an existing account should require authentication to that account.
+
+Confirm adding “Accounts, Security & Profiles” as a dedicated release before Bot Manager, including the developer-only authentication toggle? This confirmation follows your instruction to approve new requirements before they enter the tracked roadmap.
+
+When a user starts a trading session...
+
+Is the trading data saved?
+If yes, where is the trading data saved for later retrieval?
+
+Yes. In the or a complete backup, stop the Python app and copy that entire folder. Account-based separation and automatic cloud synchronization are not implemented yet.
+
+General comment based on the overall project. Let's discuss:I want the user to be able to download the trading data for their own account. They specify the date period since their first session to the most recent/active session. They have the option to download it as csv or xlsx.
+
+When a user creates their own bot, it saves as a file on their local machine in downloads. After each trading session or training session, the user is prompted to save the changes to their bot. If not, the changes are lost. Only the admin user can create ad save public bots that are available to all users of the system. These public bots are stored on the server. All user-specific bots, and data are private and stored as local files in the user's downloads. Only the market specific configs are saved for each user on the server. As the configs are made by the user and saved on the site, the data is updated on the database for custom/dynamic user experience. Otherwise, the user upload their bot files, training files or configuration files when needed. The user should be able to download the current configuration or training data for their select markets. They will have the option to download the full bot, the config file only or the trading data only for their live session. The data is written to the user's temporary storage locally if not explicitly downloaded.
+
+Yes—this is feasible as a local-first design. Personal bots and trading datasets would stay on the user’s device, while the server manages public bots and saved account settings.
+
+However, two requirements need reconciling: exporting history from the first session and discarding data that was never explicitly downloaded.
+
+Proposed storage arrangement
+
+Information	Proposed location
+Admin-published public bots	Server
+User’s saved market configurations	Server, associated with their account
+Account/profile/security records	Server, if the earlier authentication proposal is approved
+Personal bot files and learned models	User-selected local files
+Private trading and training datasets	Local device; downloadable as CSV/XLSX
+Unsaved bot changes	Local working storage
+Live-trading recovery information	Automatically saved locally—recommended exception discussed below
+
+Private file imports should be processed on the device or by the local Python companion. Sending them to a hosted training backend would change this privacy model, even if the server deleted them afterward.
+
+Downloads and file saving
+
+The app can offer these actions for selected markets:
+
+Action	Output
+Download full bot	.tbot: algorithm/model, configuration, version and provenance
+Download configuration	.tsetup: compatible configuration values
+Download training update	.ttrain: learned changes and evaluation metadata
+Download trading data	CSV or XLSX for the chosen period
+Download training dataset	CSV; optionally XLSX for inspection
+
+A browser cannot silently choose and write arbitrary files in Downloads. Normal downloads follow the browser’s download settings. Supported browsers can also let the user explicitly select a file or folder and grant access for subsequent saves. We should support both approaches.
+
+Therefore, I would describe the destination as “Downloads or a location chosen by the user.”
+
+Saving or discarding bot changes
+
+At the end of a trading or training session, present:
+
+Save new bot version — preserve the updated model and configuration.
+Discard bot changes — keep the previously saved version.
+Return to session — postpone the decision.
+
+These choices should apply to algorithm/model changes. Exporting the session’s trading data should remain a separate option.
+
+Also distinguish Save configuration to my account from Save bot file. If the user explicitly saves settings to the server, subsequently discarding a bot draft should not imply those server settings were undone.
+
+An imported bot whose settings differ from saved account settings should trigger a comparison rather than silently merging them.
+
+We cannot guarantee a save prompt when the browser crashes or is forcibly closed. The reliable approach is an explicit End Session action, supplemented by an unsaved-changes warning where supported.
+
+Date-range exports need retained history
+
+The export screen can provide:
+
+Earliest available record through the current session.
+Custom start/end dates.
+Account, market, bot/version, and demo/live filters.
+CSV or XLSX.
+An export timestamp, with open trades clearly distinguished from settled trades.
+
+But if yesterday’s undownloaded data was discarded, the app cannot export it today. Signing in on another device would retrieve server settings—not private files that were never uploaded.
+
+The app must therefore identify missing periods and allow users to import earlier datasets. It should never label an incomplete export “complete account history.”
+
+Temporary local storage needs an explicit policy
+
+Browser-managed storage can hold working data, but it is separate from Downloads. It is subject to storage limits and can be deleted when site data is cleared; it does not automatically become temporary merely because the app calls it temporary.
+
+We should define when drafts are deleted, whether interrupted sessions can be recovered, and how different signed-in users are separated on a shared device. Local files are private from the service, but are not automatically encrypted or inaccessible to other computer users.
+
+Live-trading recovery should survive “Discard changes”
+
+For eventual real-money trading, I recommend a small, automatically saved local recovery record containing the cycle authorization, protective floor, and pending/open order references.
+
+Discarding training changes must not:
+
+Reset the protective floor.
+Forget an outstanding order.
+Start a new cycle with fresh loss capacity.
+Treat real positions as though they disappeared.
+
+If recovery information is unavailable, the app should block new entries until exposure and authorization can be reconciled.
+
+Public bots and the marketplace
+
+Admin-only publication is straightforward: only an authorized administrator can create or update the server’s public bot catalogue.
+
+A user editing a public bot would create a private local copy. This changes the earlier marketplace proposal: users could export files for permitted private distribution, but could not directly publish server-hosted public bots. Resale permissions would still depend on the package licence.
+
+I’ve recorded this discussion as CR-002, pending clarification and approval. It affects the data foundation, portable files, hosting, live recovery, and marketplace design.
+
+Which history policy do you prefer before we finalize it?
+
+A — Retain private local history automatically: supports exports back to the first retained session; saving changes to the bot file still requires confirmation.
+B — Strictly discard undownloaded session data: exports cover only the current data and earlier files the user imports; complete historical retrieval cannot be guaranteed.
+
+I recommend A, with private local history kept separate from explicitly saved bot versions.
+
+A
+
+Confirmed—Option A is recorded. The planned behaviour is:
+
+Automatically retain private trading/training history locally.
+Export retained history by date range as CSV or XLSX.
+Require explicit saving of bot/model changes.
+Discarding bot changes preserves trading history.
+
+The 
+tracker is updated; this change has not yet been implemented.
+
+deriv-implementation-tracker.md
+Document
+These are my additional ideas for the store. Let's discuss before approving:
+Users can sell their bots directly to the store. If bought, customers can give the purchase a nick-name and personal description for their purposes. They will then be able to post their success rates with the push of a button directly from their session to the item in the store, with comments. Other users will be able to use it to justify the posted seller success rate. Also, customers can choose a purchased compatible bot for the specific market from a list of drop-downs when uploading a trading bot to use.
+
+These ideas are feasible and fit an admin-controlled store. I’ve recorded them as CR-003 for discussion only, without adding them to the approved roadmap.
+
+The main distinction is between purchasing a bot, personalizing its name, modifying its behaviour, and reporting its results.
+
+1. Users sell bots to the store
+
+I interpret this as the store acquiring a bot or resale licence, then selling it to customers:
+
+Creator submits a bot and supporting performance information.
+Store reviews compatibility, functionality, ownership/licensing, and evidence.
+Store accepts or declines the proposed purchase.
+An administrator publishes an accepted version.
+Customers purchase access to that version.
+
+This preserves your earlier rule that only administrators publish public bots.
+
+The acquisition terms need defining: buying a file, purchasing resale rights, and acquiring exclusive ownership are different arrangements.
+
+2. Customers personalize purchased bots
+
+A buyer could assign:
+
+A private nickname.
+A personal description.
+Optional private notes.
+
+These should leave the public item’s identity, author, and version unchanged.
+
+Public store item	Buyer’s private label
+EUR/USD Session Trader — v1.2	“My morning EUR bot”
+Seller’s description	“Use during my selected morning session”
+
+Renaming a purchase would not change its performance identity. Changing its algorithm or performance-relevant configuration would create a customized version with separately attributed results.
+
+For your local-first model, I recommend keeping these private labels locally initially. Synchronizing them across devices would require another permitted server-side preference.
+
+3. Publish session results to the store item
+
+A Post Results button is practical. It should calculate results automatically and open a preview before publication.
+
+A performance post should contain:
+
+Information	Why it matters
+Bot and configuration version	Identifies what actually ran
+Market, product, and duration	Makes comparisons meaningful
+Historical, paper-demo, broker-demo, or live	Distinguishes the evidence
+Session dates and reporting timestamp	Defines the period
+Settled trades and wins/losses/break-even	Gives the percentage context
+Net trading profit/loss and measured drawdown	Shows more than win rate
+Original or customized setup	Separates results from modified versions
+Customer comments	Explains their experience
+
+If posted during an active session, it should say “Session in progress—as of [time]”. Open positions must not count as settled wins.
+
+Repeatedly pressing Post Results should update the same report or create a linked revision—not count the same trades again.
+
+4. Customer reports can help assess seller claims—but cannot prove them
+
+The store could show three separate views:
+
+Seller-reported performance.
+Community-submitted performance.
+The buyer’s own local performance.
+
+For example, buyers could see whether customers using the same version and original configuration report broadly similar results.
+
+However, these badges must remain distinct:
+
+Badge	What it establishes
+Verified purchaser	The account purchased the item
+App-reported results	The application supplied calculated figures
+Broker-reconciled outcomes	Submitted execution/outcome records were matched against broker information
+
+A verified purchase does not verify performance. Locally editable files can be manipulated, and even broker-confirmed trades do not independently prove which algorithm generated them.
+
+Community results also represent people who chose to publish, not necessarily every customer. Aggregates should identify participant and trade counts, separate comparable versions/modes, and include losing results. Platform guidance likewise emphasizes collecting and moderating reviews without improperly favouring positive feedback.
+
+5. Select purchased bots from compatible drop-downs
+
+The market’s trader panel could offer:
+
+Selection	Available choices
+Bot source	Default bot / My purchased bots / Import local bot
+Bot	Compatible purchases for that market
+Version	Available compatible versions
+Configuration	Original setup / saved account settings / imported setup
+
+The app should filter by market, product, runtime compatibility, and purchase entitlement. Unsupported items could remain visible with an explanation.
+
+Selecting a purchased bot can load the original store package. If the user wants their privately trained or customized copy, they must provide that local file. The store cannot recover private changes that were never uploaded.
+
+Thhange based on recent user experiences, the changes will need to be approved by an admin each week, reducing bot updates to approved changes weekly. 
+
+When a purchase is made, the user gets an 80% commission.
+
+This changes the store into a commission-based marketplace, with two distinct bot categories. I’ve recorded the revision under the pending store proposal; it is not implemented or added to the approved roadmap yet.
+
+Category	Access	Publication and updates
+Paid seller bots	Purchase required; USD $30–$50	Product generated from an active trading session
+Shared members-only bots	Available to eligible members	Changes reviewed and approved by an administrator for weekly release
+
+Session-generated paid listings
+
+The proposed flow would be:
+
+User runs a trading session.
+Add to Store becomes available.
+The app generates the product from the current bot, configuration, market, performance, and observed market conditions.
+The user sets a price between $30 and $50 USD and adds description text.
+Publishing uploads that specific bot version as a purchase-protected package.
+
+The generated information should include the trade count, reporting period, demo/live mode, bot version, and training status alongside its success rate. An active-session result should carry an “as of” timestamp.
+
+The user would not manually edit the calculated success rate. A new session with one winning trade must remain distinguishable from a validated model with hundreds of trades.
+
+Freeze the version being sold
+
+The listing should capture a fixed bot/model/configuration snapshot. Continuing to train the local bot would not silently change what customers purchase.
+
+This also keeps customer performance reports attributable to the correct version. Uploading a listing would be an explicit exception to the private-local-storage policy—not permission to upload the seller’s entire history or other bots.
+
+Weekly updates for shared bots
+
+Recent user experiences can inform candidate changes, but should not directly modify the shared bot. I recommend:
+
+Collect feedback and candidate improvements.
+Evaluate them before the weekly review.
+Let an administrator approve, reject, or defer each change.
+Publish approved changes as a new version.
+Keep running sessions on their starting version.
+
+I’m interpreting your weekly restriction as applying to shared members-only bots. The approval policy for updates to paid seller bots remains to be decided.
+
+Seller commission
+
+If the 80% is calculated from the listed sale price, the split would be:
+
+Sale price	Seller: 80%	Platform remainder: 20%
+$30	$24	$6
+$40	$32	$8
+$50	$40	$10
+
+These figures are before deciding who bears payment fees, refunds, taxes, or other deductions. Commission earned and commission available for payout should also be tracked separately.
+
+The first commercial detail to confirm: should the seller receive 80% of the gross sale price, or 80% of net proceeds after specified payment fees?
+
+80% of net price
+
+Confirmed and recorded:
+
+Seller: 80% of the net sale price.
+Platform: remaining 20% of the same net price.
+
+The deductions that define “net price” still need agreement before payment implementation.
+
+Updated tracker
+
+deriv-implementation-tracker.md
+Document
+When a member uses a public members-only bot, it does not provide a resale option. Also, when a user does not modify a public members-only bot, the option to download does not appear. Only custom bots provide those options. 
+
+The store should also categorize bots and allow for filtering.
+
+Additional ideas and features to discuss:
+The app will keep a record of all trained user bots that have hit over 90% success rate. It will record the user, the bots success rate, the bots name, if the bot is in store and the specific market it has achieved the success in. Users will be able to filter the leaderboard by market, country/region and apps that are for sale. The app will also assign the user with the successful bot a special title in the app, specific to the marketplace, and put them on a leader board to highlight their success. Users can obtain multiple titles. This means the app needs to include a leaderboard to show users and their country/region who have created bots that hit or pass the 90% mark during their trading session on demo or live. The public bots will also be named and ranked on the leader board.
+
+Guests will not be able to trade live or customize the basic public bots for demo trading. They will only be able to use the basic public bots in the various marketplaces. 
+
+All signed in users are able to use the basic public bots, customize the basic public bots for their own use (whether in live or demo trading), and build a bot from scratch. They will have download and upload limits for their custom bots, however, of 1 download per marketplace per day and 1 upload per day regardless of marketplace. The best place to implement this limitation may be at the browser level for efficient use of server resources. They limit also applies to the configuration file. They have unlimited access to their trading data while the browser's storage still holds the data.
+
+If a user registers for the monthly/annual membership subscription, they will have access to basic public bots (that do not undergo training more than once annually), automatically-trained members-only public bots, unlimited downloads of their customized bots/configurations/trading data, unlimited uploads, a membership badge icon beside their names in the app and tiered max cycle lengths per month. Basic Bronze members can have a max cycle length of 7 days, Silver members can have a max cycle length of 14 days, Gold members can have a max cycle length of 21 days, and Platinum members can have a maximum cycle length of 28 days. These are monthly allotments that do not roll over. Cancelled sessions still get deducted from the monthly allotment as a minimum of 1 day up to the number of days the session ran for (end date minus start date).
+
+Users will be able to pay for each download and upload at $2.50 per download/upload. The uploads do not persist across sessions. Guest User sessions expire after 1 hour of no user interaction. They will have to sign in again and re-upload custom bot at a cost each time they want to use their downloaded custom bot if session expires or they signed out. Also, they can only trade for a maximum of 2 cycle lengths (2 days) per month. 
+
+Users can pay for each additional day after cycle lengths run out - at $0.5 per day, minimum of 2 days required. 
+
+Subscribed members with customize public members-only bots - once the customized app achieves a greater success rate than what is in the server for that members-only bot, then the bot data/config/algorithm will be automatically updated on the server for all future members to benefit from, making the bots always dynamic and keeping the latest and best configurations with the latest and best success rates.
+
+These features are feasible, but they introduce a substantial membership, billing, and permissions layer. I’ve recorded them as CR-004 for discussion—not yet approved or implemented.
+
+I’m interpreting “per marketplace” as per trading market, such as EUR/USD or V100–1s, unless you mean separate stores.
+
+Bot categories and permissions
+
+The catalogue now needs three principal categories:
+
+Category	Availability	Download/resale behaviour
+Basic public bots	Guests and signed-in users	Original public version has no download/resale option; trained at most annually
+Members-only public bots	Subscribers	Unmodified original has no download/resale option; improvements follow the agreed publication process
+Paid custom bots	Customers who purchase them	Access and permitted use follow their licence and the user’s plan
+
+A meaningful algorithm/configuration change should create a custom derivative, retaining its parent bot and version. A nickname alone should not unlock resale.
+
+Removing download buttons is an application permission rule—not absolute copy protection for algorithms executing on someone’s device.
+
+Store filters could include market, category, compatible product, price, training status, demo/live evidence, success rate with trade count, and whether the bot is for sale.
+
+Access rules need a clear distinction between guests and registered free users
+
+The cleanest interpretation is:
+
+Capability	Guest	Registered free user	Subscriber
+Use basic public bots in demo	Yes	Yes	Yes
+Customize bots/build a bot	No	Yes	Yes
+Use members-only public bots	No	No	Yes
+Trade live	No	After separate authorization	After separate authorization
+Custom bot/config downloads	None	One per market daily	Unlimited
+Custom bot/config uploads	None	One daily across markets	Unlimited
+Access/export retained personal trading data	Demo records available locally	Unlimited	Unlimited
+
+For free users, I suggest bot and configuration files share the same allowance, rather than providing separate allowances for each file type.
+
+The $2.50 charge would apply to additional eligible file operations, after included allowances are exhausted. It should not silently apply to subscribers’ unlimited operations or to trading-data exports.
+
+Your statement about guests signing in again and paying to re-upload a custom bot conflicts with guests being unable to use custom bots. That appears better suited to registered free users.
+
+Browser-only quota enforcement would be unreliable
+
+Clearing browser storage, changing browsers, or modifying client code could reset or bypass browser counters. Prices, permissions, and billable allowances should have an authoritative server-side check; OWASP explicitly recommends deriving such business-critical values server-side.
+
+We can still minimize server resources:
+
+Keep bot files and private datasets local.
+Store a small account usage ledger on the server.
+Cache remaining allowances in the browser.
+Avoid duplicate charges for retries or failed operations.
+
+These controls govern the app’s services; they cannot prevent people copying exported files outside the app.
+
+Monthly day allowances need separating from cycle duration
+
+Your proposed figures are:
+
+Membership	Proposed monthly day figure
+Bronze	7 days
+Silver	14 days
+Gold	21 days
+Platinum	28 days
+
+I recommend interpreting these as total account-wide trading-day budgets, with a separate maximum duration for one cycle.
+
+For example, Bronze could use one seven-day cycle or several shorter cycles totalling seven days. Running five markets simultaneously would consume one account-day, rather than five.
+
+For early cancellation, a clear proposed calculation is:
+
+Charged days = maximum of 1 and elapsed time rounded up to whole 24-hour days.
+
+Thus, 29 hours consumes two days. Reserve planned days when a cycle starts, then reconcile unused days when it ends early.
+
+Additional days would cost $0.50 each, minimum two days—$1 minimum purchase. We still need to decide whether top-ups expire, and whether they extend the maximum individual cycle or only the remaining monthly budget.
+
+Annual subscriptions should still receive their allowance in defined monthly periods; membership prices remain unspecified.
+
+Login sessions, trading cycles, and local files must remain separate
+
+A one-hour inactivity expiry can be implemented, with server-side enforcement. Background price polling should not count as human interaction.
+
+However:
+
+Expiry must not reset a cycle’s floor or allowance.
+Existing real positions cannot simply be forgotten.
+Re-authentication must not create another day charge for the same cycle.
+An uploaded working bot can be unloaded while Option A’s retained local history remains available.
+Subscribers should not pay re-upload fees where uploads are unlimited.
+
+That preserves the distinction between losing an active file selection and losing historical records.
+
+Leaderboards and titles are possible—but need qualification rules
+
+The record could include the user, bot/version, market, country/region, success rate, trade count, evidence mode, dates, and sale status.
+
+I recommend:
+
+Separate demo and live rankings.
+Separate public-bot rankings from user-created-bot achievements.
+Filters for market, country/region, and for-sale bots.
+Multiple market-specific titles per user.
+Optional country/region disclosure.
+Historical achievements labelled separately from current performance.
+
+I would use “at least 90%” consistently, subject to your confirmation.
+
+The 500-trade training baseline does not establish a sufficiently large evaluation sample. A trained bot winning one session trade would display 100%, but should not immediately receive an expert-style title.
+
+We therefore need a separate minimum evaluated-trade requirement for official leaderboard eligibility. Short-session milestones could remain visible as provisional achievements, upload apply to registered free users, with guests remaining basic-demo-only. free users receive two-day monthly allowance.
+Shared-bot updates: Keep automatic candidate collection followed by weekly admin approval
+
+Confirmed and recorded:
+
+Policy	Agreed behavior
+Monthly day budgets	Bronze 7, Silver 14, Gold 21, Platinum 28 total account-wide days, shared across markets and cycles. No rollover.
+Guests	Basic public bots in demo only; no custom-bot uploads.
+Registered free users	Two days per month. Paid custom-bot re-upload applies to this group.
+Shared members-only bots	Automatically collect candidates; publish changes only after weekly admin approval.
+
+These three decisions are confirmed. The remaining proposed features still await approval; no application code has changed.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Finally, let's discuss the feasibility of these addition for these new features.
+Subscription members are able to recommend new members to join and if they join, the referrers receive monthly/annual passive income from their membership. 
+
+25% of all membership fee goes to the referrer. The remaining comes to the business. If new member says no one referred them then a priority list of members with the least number of referees is used. The one at the top is automatically assigned in the back-end as the referrer to earn passive monthly commission income. The priority list is limited to the active subscribed members with less than 4 referees linked to them. This creates a systematic chain of support for those who have not yet made a referral. If the referrer becomes inactive, the commission comes to the business instead until they become active again. A member can become active if they fail to pay their monthly subscription fee within the first 5 days of it being due. Commissions already paid out to the business due to inactivity will not be retro-actively paid to the member after late payment. they would have lost that month's commission. All subscribed members must have a dashboard to track their expected monthly commission, their number of referees, their referees' usernames, wallet/balance their referral link//QR and their referral username/code to share with others. Commission only applies to memberships not to the store. Members will have the option to withdraw from their wallet or have commissions automatically sent to their verified/confirmed bank account attached. If no verified wallet or account is attached, it will be logged in our own virtual custom wallet for later transfer to bank or external wallet.
+
+Yes—the referral dashboard, recurring commission calculation, priority assignment and payouts are technically feasible. I recommend introducing direct referrals first, then considering automatic assignment separately. The latter changes the commercial and regulatory risk substantially.
+
+I’ve recorded this as CR-005: Membership Referrals & Commission Payouts, pending approval.
+
+How the commission model could work
+
+Component	Proposed behavior
+Attribution	Each paying member has one direct referrer or assigned beneficiary.
+Commission	That beneficiary receives 25% of eligible subscription payments while eligible.
+Business share	Remaining 75%, before business expenses and any applicable payment costs.
+Scope	Membership subscriptions only. Store sales retain their separate commission rules.
+Levels	One level only; no commission from referrals made by someone you referred.
+Missing payout destination	Earned commission remains recorded as an amount owed until a supported destination is verified.
+
+For example, on an eligible $20 monthly payment, the member earns $5 and the business retains $15 before costs. Subscription prices remain undecided.
+
+We must define whether the 25% applies before or after taxes, discounts, payment fees and refunds. Your earlier 80% of net price decision applies to store sales; it does not automatically define this subscription calculation.
+
+Automatic assignment needs particular care
+
+The system can select active subscribers with fewer than four linked members, order them by referral count, and assign the next eligible person. Ties could use the longest time since their last assignment.
+
+However, it cannot reliably provide four paying referrals to everyone. With 100 members, assigning each member to one beneficiary creates at most 100 relationships. Giving all 100 members four would require 400 relationships. New arrivals also become eligible beneficiaries.
+
+Consequently, this should never be advertised as guaranteed referrals, guaranteed subscription recovery or guaranteed passive income.
+
+Requiring a paid subscription to qualify for recurring rewards—especially rewards from automatically assigned subscribers—also deserves legal review. US FTC guidance examines recruitment incentives and purchases made to maintain compensation eligibility; having a real service does not automatically resolve those concerns. That is relevant to US expansion, not a determination of Jamaican legality.
+
+My recommendation is to:
+
+Launch genuine direct-referral commissions first.
+Consider allowing affiliate participation independently of buying a subscription.
+Review automatic allocation with Jamaican counsel and the selected payment provider before offering it.
+
+If retained, call an automatically assigned recipient a commission beneficiary, rather than claiming they actually referred that customer.
+
+Inactivity and annual payments need precise rules
+
+I assume “become active if they fail to pay” means become inactive after remaining unpaid beyond the five-day grace period.
+
+Your intended rule can be implemented: commissions arising during an ineligible period go to the business, and later renewal does not recover them. But already-earned, payable commissions should remain separately recorded; inactivity should not silently erase those balances.
+
+Annual subscriptions introduce another decision. Paying the entire annual commission immediately makes later inactivity and refunds harder to handle. I recommend monthly vesting of annual commissions, with the dashboard distinguishing expected income from earned and withdrawable income.
+
+The terms must also specify when eligibility is checked: at the customer’s payment, at monthly vesting, or another defined cutoff.
+
+Use a commission balance initially
+
+An internal commission ledger is feasible and should be stored on the server. It should distinguish:
+
+Balance	Meaning
+Expected	Forecast from current subscriptions; not guaranteed
+Pending	Recorded but awaiting settlement or release conditions
+Available	Earned and eligible for withdrawal
+Processing	A payout has been initiated
+Paid/reversed	Completed payments or refund adjustments
+
+A missing bank account does not turn an earned commission into business income—it remains an unpaid obligation.
+
+I recommend starting with commission earnings and withdrawals only, without deposits, transfers between members or holding trading capital. Calling something a “virtual wallet” does not settle its regulatory classification. BOJ identifies payment service providers as authorised entities providing electronic payment and funds-transfer services, so the actual functionality and payout arrangement need review.
+
+Bank and external-wallet payouts depend on a provider supporting your business, recipient countries, currencies and verification requirements. We have not selected one yet.
+
+The dashboard can include all requested referral tools. Referees’ usernames should have clear disclosure, while their banking details, email addresses and trading information remain private.
+
+Before approving this addition, the three main decisions are:
+
+Launch scope: direct referrals first, or retain automatic assignment for later reviewed implementation?
+Grace period: confirm that unpaid members become inactive after five days.
+Commission calculation: what deductions define the eligible fee, and should annual commissions vest monthly?
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+
+Direct referrals first.
+Unpaid members become inactive after five days.
+Membership fees are collected at the start of each month. Commissions are paid 5 days after the end of the month so that refund period can be fully settled. Eligible fees then becomes 25% of the gross monthly fee, instead of the net. Annual commission should vest monthly.
+
+If these not solve all concerns, suggest best solution for each point.
+
+These decisions resolve the main structural questions. The remaining concerns are refund exposure, exact eligibility timing, and payout operations. I’ve recorded your decisions as confirmed; the recommendations below remain proposals.
+
+Confirmed policy	Behavior
+Referral model	Direct referrals first; automatic assignment deferred
+Inactivity	Unpaid members become inactive after five days
+Monthly billing	Fees collected at the start of each month
+Commission	25% of the gross monthly membership fee
+Payment schedule	Five days after month-end
+Annual memberships	Commission vests monthly
+Scope	Memberships only; store commissions remain separate
+
+1. Five days after month-end does not eliminate refund risk
+
+It provides a useful processing buffer, but card disputes can arrive much later. Stripe documents typical dispute windows of 120 days, sometimes longer. This illustrates the risk; we have not selected Stripe as your provider.
+
+Recommended solution: Keep your payout schedule, hold disputed payments, and reverse the corresponding commission when a payment is refunded or charged back. Disclosed reversals can offset future commissions. Maintain a business-funded reserve for amounts already paid out.
+
+2. Define “gross fee” precisely
+
+My recommendation is the subscription amount actually charged after discounts, before processing fees, excluding separately collected taxes. Refunds reduce the corresponding commission proportionately.
+
+Example	Commission
+$20 monthly subscription, plus applicable tax	$5
+Discounted monthly subscription charged at $16	$4
+$240 annual subscription	$5 vested monthly; $60 across twelve months
+
+The business absorbs processing costs from its share. Annual commission should use the actual annual subscription price, including any annual discount.
+
+3. Make billing and inactivity dates unambiguous
+
+I recommend using Jamaica time throughout:
+
+Renewal due on the 1st.
+Grace period through 11:59 PM on the 5th.
+Inactive from 12:00 AM on the 6th if still unpaid.
+Prior-month commissions released and payouts initiated on the 5th of the following month. Bank arrival depends on processing times.
+
+For members joining midmonth, charge a clearly disclosed prorated first month, then renew on the 1st. Annual subscribers remain active throughout their prepaid term without monthly payment requirements.
+
+4. Separate earned commissions from future eligibility
+
+To preserve your intended forfeiture rule, I recommend:
+
+Missing the renewal cutoff forfeits that month’s commission eligibility.
+Late payment restores membership access but does not recover that forfeited month.
+Eligibility resumes in the next qualifying month.
+Previously earned commissions remain payable, even if the member becomes inactive before payout.
+
+For example, someone who earned October commission should still receive it on November 5. Missing November’s renewal should affect November eligibility, rather than erase October earnings.
+
+New members joining after the monthly cutoff need an explicit first-month exception, ideally earning commissions only from their activation date.
+
+5. Keep the initial “wallet” limited to commission accounting
+
+Start with an internal commission balance, supported by verified bank or payment-provider payouts. Show expected, pending, available, processing, paid and reversed amounts separately.
+
+If no verified destination exists, available earnings remain owed to the member. Before launch, define payout minimums, currencies, fees, identity verification and failed-transfer handling. These records must remain on the server and survive logout or browser-data deletion.
+
+6. Direct referrals reduce complexity, but do not settle every legal concern
+
+The remaining issue is requiring someone to buy membership to qualify for earnings. My preferred approach is to allow free affiliate enrollment, while paid subscriptions purchase trading-app features. This separates buying the service from earning referral commissions. It would change your proposed eligibility rule, so it requires your approval.
+
+Qualified Jamaican legal review and payment-provider acceptance should precede launch. Referral income should be marketed as variable earnings from genuine subscription sales, with no guaranteed return.
+
+These recommendations give you a workable foundation without changing your confirmed 25% gross commission or monthly payout schedule.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Now, let's go through the change request for approvals
+
+We’ll review one change request at a time. For each, you can approve, approve with changes, defer or reject. Approval adds it to the implementation backlog; it does not activate payments or live trading.
+
+Order	Change request
+1	CR-001: Accounts, Security & Profiles
+2	CR-002: Private Local Data, Bot Files & Exports
+3	CR-003: Bot Store & Seller Commissions
+4	CR-004: Memberships, Usage Limits & Leaderboards
+5	CR-005: Membership Referrals & Commission Payouts
+
+CR-001 — Accounts, Security & Profiles
+
+The proposed scope is:
+
+Feature	Behavior for approval
+Registration	Verified email/password, Google sign-in or GitHub sign-in
+Account recovery	Password reset and email verification through expiring, single-use links
+Two-factor authentication	Authenticator app with recovery codes; optional for demo, required before live trading and designated sensitive actions
+Profile personalization	Edit avatar, display name and unique username during an active session
+Account linking	Connect additional sign-in methods after authenticating the existing account
+User separation	Account ownership checks protect private settings, bots, history and Deriv connections
+Developer testing	Startup-controlled authentication bypass using a separate test identity; visible development indicator; live trading blocked
+Production protection	Authentication bypass cannot run in production
+Session handling	Secure login/logout; session expiry cannot erase or transfer responsibility for existing broker positions
+
+Google sign-in requests identity access only. GitHub sign-in does not request repository access.
+
+Proposed priority: High—implement the account foundation before the multi-user Bot Manager, memberships and store. Final version numbering will follow this approval review.
+
+Acceptance: Registration, verification, recovery, profile editing and two-factor flows work; cross-user access is denied; developer bypass cannot enable live trading or production access.
+
+Do you approve CR-001 as described, approve with changes, defer it or reject it?
+
+approve with one addition - the user should be able to enter and update their contact information, and choose their country/region. They should also have the option to disable if they want to be displayed on the leader board for their custom bots performance.
+
+CR-001 is approved with your additions and recorded:
+
+Users can enter and update contact information.
+Users can select and update their country/region.
+Users can disable public leaderboard display of their custom-bot performance.
+
+Contact details remain private. The leaderboard preference will control public entries without deleting private performance history. I recommend leaderboard visibility off by default; that default remains proposed.
+
+Next: CR-002 — Private Local Data, Bot Files & Exports
+
+Feature	Behavior for approval
+Local history	Automatically retain private, account-separated trading/training history on the device—your previously confirmed Option A
+Data downloads	Export retained account data for selected dates, markets and modes as CSV or XLSX, including an active-session snapshot
+Personal bot files	Import and export full bots, configurations and learned updates
+Save/discard	At trading/training session end, offer saving a new bot version or discarding bot changes; discarding preserves trading history
+File location	Use normal browser downloads, or a supported user-authorized file/folder picker
+Server preferences	Explicitly saved market configurations persist separately from local bot files
+Public bots	Only admins publish or update the public catalog; customizing one creates a private copy
+Recovery	Automatically retain a minimal local journal of cycle protections and pending/open orders so crashes or discarded changes cannot reset trading obligations
+Privacy	Exports exclude credentials and live-capital authorization; private training runs locally or through the local Python application
+Retention controls	Provide local-storage usage, deletion controls and clear warnings that deleted or unavailable history cannot be exported
+
+Server boundary: Authentication, profiles, security records and saved market preferences remain server-side. Store assets, subscriptions, commissions and leaderboard submissions require their separately approved server records.
+
+Closing a browser cannot reliably trigger a save prompt, so the app will provide an explicit End Session action. Signing in elsewhere retrieves server preferences, not private files left on another device.
+
+Proposed priority: High—establish this before expanding Bot Manager, training and portable files. Any download/upload quotas will be reviewed under CR-004.
+
+Acceptance: Account separation works; exports match retained records and selected dates; save/discard behaves correctly; restarting preserves risk controls and order reconciliation.
+
+Do you approve CR-002 as described, approve with changes, defer it or reject it?
+
+approve
+
+CR-002 is approved and recorded. CR-001 and CR-002 are now approved for implementation; neither has been implemented yet.
+
+Next: CR-003 — Bot Store & Seller Commissions
+
+Feature	Scope for approval
+Create a listing	Available during an active trading session; capture an immutable copy of the current custom bot and configuration
+Automated product details	Include market, bot version, market-condition snapshot, calculated win rate, sample size, demo/live source, period, profit and measured drawdown
+Seller inputs	Set price between US$30–$50 and add descriptive text; cannot manually replace calculated statistics
+Private paid products	Store the listed package on the server; require purchase entitlement to access it
+Seller commission	80% of net sale price; business receives the remaining 20% of that same base
+Purchased bots	Show compatible purchases in the market’s bot selector; allow private nicknames and descriptions
+Customer results	Preview and publish session statistics with comments; distinguish original and customized versions and demo/live results
+Store discovery	Categorize and filter by market, bot type, price, training status and performance evidence
+Public-bot restrictions	Unmodified members-only public bots offer no download or resale action
+Licensing	A custom bot’s download/resale availability remains subject to ownership and derivative-use permissions
+Shared-bot updates	Automatically collect candidates, then publish only after weekly admin approval
+Version protection	Existing sessions retain their selected version; published updates do not silently alter running bots
+
+Recommended decisions to complete this request
+
+Listing eligibility: Allow both live-price demo and real-money sessions, clearly labelled. Offline simulated results cannot be presented as market-trading evidence.
+Net sale price: Define it as the actual sale amount excluding taxes, less payment-processing fees and applicable refunds/chargebacks. Show each deduction in the seller’s ledger.
+Paid-bot updates: Require admin review before publication. Customers retain their purchased version and explicitly choose whether to install an approved update.
+Private purchase labels: Store nicknames/descriptions as private account preferences so they follow the buyer across devices.
+Payout rules: Finalize seller payout timing, minimums and refund handling alongside the payment system. The membership commission schedule does not automatically apply to store sales.
+
+Publishing a listing explicitly uploads that bot package. Posting results uploads the selected performance summary—not unrelated private history or credentials. Published win rates describe recorded results and do not promise future performance.
+
+Proposed placement: Expand the existing marketplace release after accounts, bot versioning, performance records and purchase entitlements are ready.
+
+Acceptance: Listings preserve the correct bot version; purchases enforce access; commission calculations reconcile; public-bot restrictions work; reports cannot double-count trades; updates require approval.
+
+Do you approve CR-003, including the five recommended decisions above, approve with changes, defer it or reject it?
+
+approved
+
+CR-003 is approved and recorded, including its five recommended decisions. CR-001–CR-003 are now approved for implementation.
+
+Next: CR-004 — Memberships, Usage Limits & Leaderboards
+
+Account type	Access and allowances
+Guest	Basic public bots in demo only; no customization, custom-file uploads or live trading; expires after one hour without interaction
+Registered free	Basic public bots, customization and building bots; live trading requires separate authorization; two trading days monthly
+Subscriber	Free-account features plus members-only public bots, membership badge and unlimited custom-bot/configuration uploads/downloads
+All registered users	Unlimited access/export of locally retained trading data
+
+Basic public bots undergo training no more than annually. Members-only public bots receive approved updates through the weekly review process.
+
+Subscription	Total monthly account-wide trading days
+Bronze	7
+Silver	14
+Gold	21
+Platinum	28
+
+These allowances are shared across markets and cycles and do not roll over. Subscription prices remain undecided.
+
+Usage rules proposed for approval
+
+Free accounts receive one combined bot/configuration download per trading market per day, and one combined upload daily across all markets.
+Additional bot/configuration operations cost US$2.50 each, after included allowances are used. Subscribers incur no such charges.
+Trading-data exports remain unlimited and uncharged. I recommend treating raw CSV training-data imports separately from paid bot/configuration imports.
+Failed operations and retries do not produce duplicate charges.
+Quotas, payments and permissions are enforced on the server; the browser displays remaining allowances.
+Uploaded working bots do not automatically persist across sessions. Re-upload uses an available allowance or paid operation; retained local history remains intact.
+Additional trading days cost US$0.50 each, purchased in blocks of at least two days.
+
+Recommended day-accounting decisions
+
+Reset allowances on the 1st of each month, Jamaica time, including annual subscribers.
+Use one active account-wide cycle covering all selected markets; five simultaneous markets consume the same cycle days.
+Reserve planned days at cycle start. Cancellation consumes at least one day, rounded up by elapsed 24-hour periods: 29 hours consumes two days. Release unused reservations.
+Extra days expire at month-end and do not roll over. A cycle must fit the remaining days before that reset; purchased days can extend its available duration within that boundary.
+Login expiry does not restart a cycle or reset risk controls. Exhausted allowances stop new entries while outstanding positions remain managed.
+
+Leaderboard and titles
+
+The proposed scope includes named public bots and consenting users’ custom bots, market-specific titles, multiple titles per user, and filters for market, country/region and sale status.
+
+For consistent qualification, I recommend:
+
+At least 90% win rate, inclusive.
+A separate minimum of 500 eligible settled forward-demo or live trades for the exact bot/configuration version and market—not merely 500 training records.
+Separate demo/live rankings and public/custom-bot categories.
+Display sample size, evaluation period, net profit, drawdown and evidence level.
+Preserve historical achievements while distinguishing them from current performance.
+Honor the CR-001 visibility preference; recommend off by default.
+Compare shared-bot candidates on compatible evaluation data before weekly admin approval; a higher percentage alone does not trigger publication.
+
+These thresholds qualify a recorded achievement, not a profitability or safety guarantee.
+
+Proposed placement: Build entitlements before paid usage; add leaderboards after reliable version-specific performance records. Membership prices remain a separate decision.
+
+Do you approve CR-004, including these recommended rules, approve with changes, defer it or reject it?
+
+approve
+
+CR-004 is approved and recorded, including its recommended rules. CR-001–CR-004 are now approved for implementation.
+
+Final review: CR-005 — Membership Referrals & Commission Payouts
+
+Feature	Scope for approval
+Referral model	Direct referrals only initially; automatic assignment deferred
+Eligible referrers	Active subscribed members, preserving your requested eligibility rule
+Commission	25% of gross membership fees; no commission on store purchases or usage top-ups
+Monthly billing	Renewals due on the 1st
+Grace period	Through 11:59 PM on the 5th, Jamaica time; inactive from the 6th if unpaid
+Commission payment	Prior-month commissions released and payouts initiated on the 5th of the following month
+Annual membership	Commission vests monthly using the actual annual subscription price
+Dashboard	Referral link, QR, code, referred usernames/count, expected earnings, pending/available balances and payout history
+Withdrawals	Requested withdrawals or automatic payouts to a verified, supported destination
+Missing destination	Available commission remains recorded as owed until a destination is verified
+
+Recommended rules included for approval
+
+Gross calculation: Use the subscription amount actually charged after discounts, before processing fees, excluding separately collected taxes. Refunds reduce commission proportionately. A $240 annual subscription produces $60 total commission, vesting at $5 per service month.
+Late-payment eligibility: Missing the grace deadline forfeits that month’s unvested referral commission. Late payment restores membership access, but commission eligibility resumes in the next qualifying month. Previously earned commissions remain payable.
+Midmonth registration: Prorate the first subscription month. New referrers qualify from paid activation for that initial month; they cannot earn on earlier transactions.
+Annual status: Annual subscribers remain active throughout their prepaid term. Allocate monthly vesting to the applicable service periods, with documented rounding and partial-month handling.
+Refund protection: Hold disputed commissions, reverse commissions attributable to refunds/chargebacks, and offset disclosed reversals against future earnings. Maintain a business reserve for exposure after payout.
+Attribution: One direct referrer per subscriber, fixed at first paid activation. Show the selected referrer before confirmation; prevent self-referrals and duplicate-account abuse.
+Financial records: Maintain an authoritative server-side commission ledger. Browser deletion, logout or inactivity cannot erase earned balances.
+Payout scope: Start with commission accounting and disbursements—not deposits, transfers between users or custody of trading funds. Finalize provider, supported countries/currencies, minimums and fees before launch.
+
+Launch condition: Subscriber-only earning eligibility remains subject to qualified legal review and payment-provider acceptance. Free affiliate enrollment remains an alternative for later consideration; it is not silently substituted into this request.
+
+Proposed placement: After subscriptions, identity verification and payment reconciliation. Bank arrival times may follow the payout initiation date.
+
+Acceptance: Accurate attribution, gross-fee calculations, monthly vesting, inactivity handling, refund adjustments and reconciled payouts, with no duplicate payments.
+
+Do you approve CR-005 as described, approve with changes, defer it or reject it?
+
+Accept with these changes - Members do not become eligible for commission until after completing three (3) months of uninterrupted membership. They also do not receive commission for referees who have not pass this 3 month probation.
+
+CR-005 is approved with your changes and recorded.
+
+Commission eligibility now requires both:
+
+The referrer completing three months of uninterrupted membership.
+The referred member completing their own three-month probation.
+
+Probation-period fees generate no commission or later backpay. Annual prepayment does not bypass the elapsed three-month requirement. The dashboard will show each person’s qualification progress.
+
+For implementation, I’ll interpret “uninterrupted” as continuity through the existing five-day grace period; becoming inactive resets that person’s qualifying clock. Commission begins only for eligible service periods after both qualify.
+
+All five change requests are now approved. Implementation and testing remain pending; release numbering will be updated around the approved scope.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Add a requirement for an Admin panel with role-based access levels for reviewing financials, memberships, payouts, membership conversations, disputes, etc. Full Admins and Membership Managers should access to flag or block a customer. All other admin-related tasks for the business should be included for the relevant employees to access. Employee accounts will need to be created and employee database created. Full Admins will be able to deactivate, suspend and re-activate employees, as well as modify access levels.
+
+Added CR-006 — Admin Panel, Employee Accounts & Role-Based Access as an approved requirement. Implementation remains pending.
+
+The panel will cover financials, memberships, referrals, payouts, member-support conversations, disputes, store moderation, bot approvals, usage allowances, leaderboards and audit records.
+
+Role	Main access
+Full Admin	Platform oversight; create employee accounts; modify access; suspend, deactivate and reactivate employees; flag/block customers
+Membership Manager	Memberships, eligibility, member-support cases; flag/block customers
+Finance/Accounts	Revenue, fees, commissions, reconciliation and financial reports
+Payout Operations	Review and process payouts within assigned approval permissions
+Support	Member conversations, case notes and escalation
+Disputes/Compliance	Disputes, evidence, investigations and authorized resolutions
+Marketplace/Bot Reviewer	Listings, seller submissions and bot-update approvals
+Analyst/Auditor	Scoped, read-only reporting and audit access
+
+Employees can hold multiple roles. Permissions will distinguish view, edit, approve, execute and export.
+
+The employee database will retain identity, work contact details, roles, account status and status history. Full Admin changes will be audited; suspension or deactivation will revoke active staff access.
+
+Additional controls include:
+
+Individual staff accounts, MFA and server-enforced permissions.
+Recorded reasons for customer flags, blocks and employee-status changes.
+Protection against removing the last active Full Admin.
+Customer blocking preserves financial obligations and safe management of open trades.
+Admin access does not expose private files stored only on a customer’s device.
+
+I recommend separating payout preparation from approval for higher-risk transactions; thresholds remain to be defined.
+
+Priority: Establish staff accounts and access controls after authentication, before launching paid operations. Deliver each admin module alongside its corresponding business feature.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Also, include a fun, attractive, professional landing page. In the admin section, allow for content management - where business name is set and the content and company details on the app can be modified. 
+
+The necessary dummy member accounts should also be created with relevant restrictions to model user experience and user testing.
+
+Added as CR-007 — Landing Page, Content Management & Test Accounts, with content-management permissions extending CR-006.
+
+Landing page
+
+A fun, attractive, professional design with mobile support, product introduction, demo/sign-up actions, features, membership comparison, FAQs and contact information. Performance claims will use genuine evidence.
+
+Admin content management
+
+Authorized employees can manage:
+
+Business name, logo, tagline and company description.
+Contact details and social links.
+Landing-page sections, FAQs, help content and announcements.
+
+A Content Editor role can edit and preview drafts; authorized publishers can publish or restore previous versions. Content editing cannot change trading protections, permissions or financial rules.
+
+Dummy accounts and testing
+
+Test coverage	Included personas
+Access levels	Guest, registered free, Bronze, Silver, Gold and Platinum
+Membership states	New, grace period, inactive, blocked and allowance exhausted
+Referrals	Probationary, qualified, interrupted membership and annual prepaid
+Store	Buyer, seller, customized bot and restricted public bot
+Leaderboards	Visibility disabled, enabled and qualifying performance
+Employees	Each admin role, plus suspended/deactivated accounts
+
+Test accounts will include clearly labelled sample data, expected permissions and a repeatable reset process. They will be isolated from real payments, payouts and live trading.
+
+These requirements are approved and recorded; the page, CMS and accounts have not yet been implemented.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Now, let's review all outstanding approval requests.
+
+All seven change requests are approved. No feature-level approval requests remain outstanding. What remains is a set of business-policy decisions and launch arrangements.
+
+Change request	Status
+CR-001 — Accounts, Security & Profiles	Approved with additions
+CR-002 — Private Data, Bot Files & Exports	Approved
+CR-003 — Bot Store & Seller Commissions	Approved
+CR-004 — Memberships, Limits & Leaderboards	Approved
+CR-005 — Referrals & Commission Payouts	Approved with three-month qualification
+CR-006 — Admin Panel & Employee Access	Approved
+CR-007 — Landing Page, Content Management & Test Accounts	Approved
+
+Some older tracker entries describe proposals as pending; the later approval records supersede them.
+
+The remaining decisions are:
+
+Item	Decision still needed	Recommended approach
+1. Membership pricing	Monthly and annual prices for Bronze, Silver, Gold and Platinum; annual discounts	Set prices after estimating operating costs, payment fees and referral commissions
+2. Bot ownership and resale	What buyers may modify/resell; what qualifies as a custom derivative; rights for customized public bots	Personal use/customization by default; resale only under an explicit licence. Renaming alone does not qualify
+3. Payout arrangements	Provider, supported countries/currencies, withdrawal minimums, fees and seller payout schedule	Use verified provider-managed payouts. Keep store and membership earnings separately identifiable
+4. Refunds and subscription changes	Refund periods; annual cancellations; upgrades/downgrades; treatment of unused days and file credits	Publish clear rules before payment. Show the charge, allowance adjustment and effective date before confirmation
+5. Financial approval controls	Who may approve refunds/payouts; thresholds requiring a second approver; small-team fallback	Separate preparation from approval where staffing permits; audit any permitted exception
+6. Weekly bot-review schedule	Submission cutoff, review day and publication time	Establish one weekly review window; publish only approved versions and retain rollback
+7. Referral boundary cases	Commission treatment when either party completes probation partway through a month; annual partial periods and rounding	Begin accrual only after both qualifying timestamps; prorate eligible service periods, with no probation backpay
+8. Branding and company details	Business/app name, logo, company description, support contacts and public company information	Use clearly labelled placeholders for testing until supplied
+
+Implementation planning also remains to be finalized: revised release numbering, hosting/deployment arrangement and the final employee permission matrix. Routine technical choices do not need another feature-approval round.
+
+Launch gates remain separate from your approvals: legal/payment-provider review for the referral model, genuine authentication/payment integration checks, and explicit authorization before real-money trading. These do not prevent building or testing the demo.
+
+User acceptance of the delivered v1.1 also remains unreported; that is a testing status, not an outstanding scope approval.
+
+I suggest we resolve bot ownership/resale rights and referral boundary cases first, because they determine application behavior. Pricing, payout-provider selection and final branding can remain configurable while development proceeds.
+
+Who will be able to add employees?
+Who can sign up a new member?
+
+Employees: Only Full Admins can create or invite employees, assign access levels, suspend/deactivate them, and reactivate them. Membership Managers cannot add employees.
+
+Members: Anyone can register through the public sign-up page using verified email/password, Google or GitHub. A referral link/code can attribute the registration, but the referrer cannot create or control the new member’s account.
+
+Staff-assisted member registration has not yet been included. I recommend allowing Membership Managers and Full Admins to send registration invitations, with the member completing verification and accepting the terms themselves.
+
+Membership Managers and Full Admins can send registration invitations, with the member completing verification and accepting the terms themselves. This can be done via the admin panel.
+
+Added to CR-006 as an approved requirement.
+
+Membership Managers and Full Admins can send, resend, revoke and track registration invitations through the admin panel.
+
+Invitees must complete their own verification and accept the terms. An invitation does not activate a paid subscription or authorize live trading.
+
+Employee creation remains Full Admin only. Implementation is pending.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Require security validation for membership account management, noting in the panel when security bypass occurs with employee reasons necessary. Every membership account access must include notes and reason for access along with outcome. It should fall within expected categories or user inputed in reason is outside the expected categories.
+
+Added to CR-006 as an approved requirement covering every staff access to a member account, including read-only access.
+
+Stage	Required information/control
+Before access	Validate employee identity, permissions and required security checks
+Access reason	Select a category and enter explanatory notes
+Other reason	Require a written explanation outside the predefined categories
+During access	Log account views, changes, exports and actions against the employee
+Completion	Require outcome category and outcome notes
+Interrupted access	Mark incomplete and flag for follow-up
+
+Initial reason categories include registration/verification, profile updates, subscriptions/billing, referrals, payouts, disputes, technical support, security/fraud, compliance and customer restrictions.
+
+Security exceptions will appear prominently in the panel, recording the affected check, employee, justification, approval where required, timestamp and outcome. Entering a reason alone does not authorize a bypass.
+
+Audit records cannot be silently overwritten; corrections remain linked amendments. This is separate from the developer-only testing bypass.
+
+Implementation remains pending.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Now, create a detailed design portfolio that shows graphical mockups of each page for each process.
+
+Created 89 graphical page mockups across 20 process walkthroughs, covering member, trading, store and admin experiences.
+
+105-page design portfolio PDF
+Interactive portfolio — download and open in your browser; includes search, linked workflows and mobile preview.
+Editable source package
+
+Includes security validation, mandatory access reasons/outcomes, employee permissions, referral probation and restricted-account states.
+
+Tradecraft is a temporary brand. These are design mockups with fictional data, not implemented trading or payment features.
+
+trading-platform-design-portfolio.pdf
+PDF
+trading-platform-design-portfolio.html
+HTML
+Create a relevant, fun, industry-specific, catchy business/app name coined from some aspect of this: "LB27 Trading Bot Commission Workshop"
+
+LB27 BotForge
+
+A catchy name combining LB27, trading bots, and the workshop idea—a place where users build, train, refine and share their trading strategies.
+
+Tagline: Build your bot. Forge your strategy.
+
+It fits the trading workspace, bot marketplace and member community without making commissions the entire brand.
+
+Other strong options:
+
+LB27 TradeCraft — emphasizes strategy and skill.
+BotWorks27 — playful, memorable and workshop-inspired.
+LB27 Botique — “bot” + “boutique,” ideal for the marketplace.
+
+My pick: LB27 BotForge. Name and trademark availability have not been checked.
+
+BotForge27
+
+BotForge27 is confirmed as the selected app name and recorded for future designs and development.
+
+Suggested tagline: Build your bot. Forge your strategy.
+
+New feature:
+Create a space where members can create their own video content channel, specifying free, pay-per-view or channel subscription. Guests and members are able to view all free content. Guests and members are also able to view pay/subscribe to members' content. Content will also be featured at the top based on views, favorites, popularity, recency, etc. Creators can also link their youtube, tiktok and instagram content (videos, shorts, reels or full youtube channel) to one of their app channels for full integration. These linked content cannot be marked as pay-per-view or require a paid subscription. Viewing and subscription is free. Only members (free or subscription) can subscribe, like or comment on video content. Only directly uploaded or directly recorded content may be monetized.
+
+Added CR-008 — Creator Video Channels & Monetization to BotForge27’s requirements. It is feasible, with a few access and commercial details to resolve.
+
+Channel and content rules
+
+Feature	Requirement
+Create channels	Registered free and subscribed members
+Free content	Viewable by guests and members
+Native videos	Direct uploads or recordings can be free, pay-per-view or subscriber-only
+External content	Linked YouTube, TikTok and Instagram content always remains free
+Engagement	Only registered members can follow, like or comment
+Discovery	Featured content based on views, favourites, popularity and recency
+Creator dashboard	Manage channels, content, pricing, analytics and earnings
+Admin controls	Content reports, moderation, rights complaints, disputes and financial oversight
+
+A channel can contain both paid native videos and free external videos. Its paid subscription must never block access to those external videos.
+
+External integration is possible, within platform limits
+
+YouTube supports embedded players and playlists; its channel metadata can support listing channel uploads. TikTok supports video and creator-profile embeds. Instagram supports public-content embedding. These integrations do not automatically synchronize external likes, comments or subscribers.
+
+Unavailable, deleted or private content will need an appropriate fallback. Linked content will retain its source attribution.
+
+Two decisions need clarification
+
+Guest subscriptions: You said guests can purchase subscriptions, but also that only members can subscribe. I recommend distinguishing:
+Follow: Free, registered members only.
+Paid channel subscription: Requires at least a free registered account.
+Pay-per-view: Guests may purchase through secure checkout, with a receipt/access-restoration method.
+Creator revenue: What percentage should creators receive? The existing 80% of net bot sales and 25% membership referral commission will not automatically apply to video sales.
+
+Video pricing, purchase-access duration and hosting limits also need defining. Unlimited bot-file operations will remain separate from video storage and streaming allowances.
+
+This feature adds a substantial media module. I recommend delivering free channels and external embeds first, followed by native uploads/recording and monetization.
+
+The current design portfolio does not yet include these new pages.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+Employees must be able to review past membership interactions, with conversation history, reasons, actions and outcome. Employees must be able to set follow-ups and escalate to other employees. Automatic reminders should be set for follow-ups and notifications along with inbox message for all new activities. Employees must have a tasks view and inbox that shows all tasks for them to review and update, along with inbox to see all updates and to share messages among employee team. This is in the admin only section.
+
+Added to CR-006 as an approved admin-only Employee Workspace requirement.
+
+Area	Included behavior
+Member interaction history	Conversations, access reasons, notes, security checks/exceptions, actions, outcomes and responsible employees
+Follow-ups	Assign an owner, due date/time, priority and notes; reschedule or complete with an outcome
+Escalations	Send to an authorized employee/team with context, reason and requested action; track acceptance and resolution
+My Tasks	Assigned work grouped by today, upcoming, overdue, waiting and completed
+Employee Inbox	Activity updates, reminders, assignments and internal team-message threads
+Notifications	Automatically notify relevant employees of new activities and due/overdue follow-ups
+
+Reminders will run even when the employee’s browser is closed. Reading an inbox message will not mark its task complete.
+
+Access remains role-scoped. Reviewing historical member records still requires security validation, an access reason and outcome. Escalation does not automatically grant additional permissions.
+
+Unfinished work assigned to suspended/deactivated employees will enter an authorized reassignment queue.
+
+Implementation and updated graphical mockups remain pending.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+The app must be very simplified, attractive, fun, intuitive/easy to use, and user-friendly.
+
+Confirmed—this is a design requirement across all BotForge27 pages, including the admin panel.
+
+Simple: Show essentials first; place advanced settings behind clearly labelled options.
+Intuitive: Use plain language, consistent navigation and obvious next steps.
+Attractive and fun: Use polished visuals, friendly copy and subtle animation without distracting from decisions.
+Easy to complete: Keep forms short, reuse known information and guide complex processes step by step.
+Clear feedback: Explain progress, errors, restrictions and successful actions.
+Accessible: Support mobile screens, keyboard navigation, readable text and strong contrast.
+Responsible: Make costs, trading risks and confirmations clear; avoid incentives that encourage excessive trading.
+
+Member screens will focus on the task at hand. Admin screens will prioritize My Tasks, Inbox and relevant actions, with detailed records available when needed.
+
+more technical users must have an option for more granular bot configurations.
+
+Added: BotForge27 will offer Simple and Advanced configuration modes.
+
+Mode	Experience
+Simple — default	Guided setup, presets, essential settings and plain-language explanations
+Advanced — optional	Granular, market-specific algorithm parameters, signal filters, entry/exit rules, timing, sizing and training settings supported by the selected bot
+
+Advanced mode will include parameter descriptions, valid ranges, configuration validation, comparison with defaults, and save/import/export options.
+
+Shared risk protections remain mandatory in both modes. Advanced settings cannot override allocation limits, the protected floor, combined exposure or live-trading authorization. Performance-relevant changes create a distinct bot version.
+
+What's the next version to build?
+
+The next build is BotForge27 v1.2 — Market Workspace, extending the delivered v1.1.
+
+It will include:
+
+Eight-market selection, with up to five selected simultaneously.
+Mini-graphs in a row, with abbreviated market names.
+Click a name or mini-graph to open its larger observation chart.
+Clear market availability, source freshness and trading eligibility.
+Evidence-based suggestions when sufficient current data exists.
+Watch-only status for markets requiring an execution adapter.
+BotForge27 branding and a simpler, polished interface.
+
+The granular Advanced bot editor comes with Bot Manager/configuration work. Accounts and admin foundations follow before multi-user paid features.
+
+Current status: v1.2 is planned, not started. Your v1.1 testing results are still unreported.
+
+version 1.1 report - The market observation graph need data labels and horizontal axis label. Also, it needs a way to override the pause once floor is reached. The user should be able to manually confirm over-riding the floor to restart with new balance and calculated floor for new set capital. Also, individual capital should be assigned for each marketplace trader initialized.
+
+Recorded your v1.1 testing feedback as changes requested.
+
+1. Observation graph — correction for v1.2
+
+Add price/data labels, a horizontal-axis label, and readable time ticks with timezone. Existing observations without timestamps must be labelled honestly rather than assigned invented times.
+
+2. Floor-stop restart — proposed behavior
+
+When a trader reaches its floor:
+
+Stop new entries and reconcile outstanding orders.
+Offer “Restart with new capital.”
+Show available balance, requested allocation, recalculated floor and new loss allowance.
+Require explicit confirmation.
+Preserve the previous run’s losses and floor in history.
+
+The old floor remains unchanged; the newly authorized run receives its own floor.
+
+Repeated resets increase cumulative risk: $50 stopping at $40, then restarting that $40 with a $32 floor, permits a total loss of $18, exceeding the original $10 allowance.
+
+3. Individual market allocations — proposed behavior
+
+Each initialized market trader gets its own capital allocation, balance, floor, profit targets and trading status. Combined allocations cannot exceed available account funds. One market reaching its floor pauses that trader.
+
+Monthly trading-day allowances remain account-wide; restarting capital does not replenish days.
+
+The reset and per-market allocations change the approved risk model. Under your change-control instruction, please confirm adding these as CR-009 to v1.2. The chart correction is already recorded.
+
+Updated implementation tracker
+
+deriv-implementation-tracker.md
+Document
+build v1.2
+
+BotForge27 v1.2 is built and ready for testing.
+
+Download BotForge27 v1.2
+
+Includes:
+
+Eight-market lineup, five selected mini-graphs and expanded observation.
+Price labels, time axis, timestamps and hover/tap details.
+Individual trader capital, balances and protective floors.
+Explicit floor-stop restart that preserves previous losses and cycle expiry.
+Archived trader runs and CSV exports.
+
+To start on Windows:
+
+Stop v1.1 and back up its data folder.
+Extract the ZIP and open the BotForge27 folder.
+Run start-live-demo.bat with Python 3.11+ installed.
+Open http://127.0.0.1:8765.
+
+The README explains migrating existing data. Default fictional funds are $100 total, shared across your allocations.
+
+Verified: 66 automated tests, desktop/mobile workflows, extracted-package startup, and three concurrent live-price paper settlements.
+
+Real-money trading remains disabled. Repeated floor restarts can increase cumulative losses beyond the original allowance.
+
+Is it feasible to bundle all pending versions into a single release in order to jump to version 2.2 with all change requests implemented?
+
+Yes—a single BotForge27 v2.2 release is feasible. We can consolidate the remaining roadmap and change requests into one release, while still building and testing its components incrementally.
+
+However, this is now a substantial platform build beyond the local v1.2 demo. Completing and validating the full scope within the original 2–3-day window is not realistic.
+
+Workstream	Consolidated scope
+Trading and bots	Bot Manager, granular configurations, training, backtesting, portable files, additional contract adapters and controlled live trading
+Accounts and administration	Authentication, MFA, profiles, employee roles, audited member access, tasks, inbox, follow-ups and escalations
+Commerce	Memberships, allowances, bot store, commissions, referrals, financial records, disputes and payouts
+Community and content	Leaderboards, titles, creator channels, uploads/recording, external embeds and paid content
+Experience and operations	Landing page, content management, responsive design, test accounts, monitoring and recovery
+
+The main architectural change
+
+The current local application cannot independently provide shared memberships, employee messaging, marketplace purchases and creator subscriptions across devices.
+
+The consolidated platform needs:
+
+Hosted services for accounts, permissions, public assets, billing, messages and administrative records.
+A local execution/storage component to preserve your private-bot and trading-data requirements.
+External integrations for authentication, email, payments, payouts, video delivery and Deriv.
+
+It can feel like one product, but it will have multiple coordinated components.
+
+My recommended release approach
+
+Freeze the v2.2 scope and consolidate the approved requirements into one specification.
+Build working modules in dependency order, integrating them continuously.
+Deliver v2.2 release candidates for your testing, with simulated services clearly distinguished from genuine integrations.
+Publish v2.2 stable after the agreed features and integrations pass acceptance.
+
+This avoids requiring you to install every intermediate numbered version while preserving meaningful testing.
+
+Decisions still needed before full production completion
+
+Membership prices and bot resale/derivative licences.
+Payment/payout providers, supported countries, fees, refund rules and approval thresholds.
+Creator revenue split and clarification of guest paid-channel subscriptions.
+Hosting, media limits and remaining operational policies.
+
+These decisions need not prevent development of the underlying modules.
+
+My recommendation: consolidate the target into v2.2, retain v1.2 as the testing baseline, and use staged release candidates rather than one untested final delivery. A delivery estimate should follow the consolidated architecture and integration assessment.
+
+walk me through the decisions I need to make, with explanations and clickable options where possible, then let's finish the v2.2 build. Once done, let's set realistic timelines for each deliverable.
+
+Your selections are recorded, and v2.2 development has started.
+
+You chose Windows-first local trading, test integrations, a Jamaica-based launch, an invitation-only pilot, verified accounts for content purchases, licensed bot resale, isolated Python scripts, and two-person financial approvals.
+
+The initial policy foundation passes 85 automated tests. The complete v2.2 platform remains unfinished; accounts, training, commerce, creator channels, and staff workflows still require implementation and integration.
+
+For one experienced full-time developer:
+
+Milestone	Initial estimate
+Earlier local/demo checkpoint	6–10 engineering weeks
+Complete approved scope	116–185 engineering days
+Full release including pilot and contingency	Approximately 6–10 calendar months, plus external delays
+
+These are planning estimates, to be revised after the first integrated milestone.
+
+Decisions and per-deliverable timeline
+Development foundation source
+Updated implementation tracker
+
+The next implementation milestone is secure accounts and local-companion pairing, followed by the Bot Manager and private-data workflows.
+
+BotForge27-v2.2-decisions-and-delivery-plan.md
+Document
+deriv-implementation-tracker.md
+Document
+build v2.2 and then create a rigorous clickable checklist for me to review, requiring approval decision and feedback for each requirement.
+
+Created a runnable v2.2 local review candidate and a 185-item clickable checklist.
+
+The full v2.2 release remains unfinished: 105 requirements have local test implementations, 45 are partial, and 35 are blocked. Real trading and payments remain disabled.
+
+Download the app
+Download the clickable checklist
+Read the build report and outstanding requirements
+
+For Windows, extract the ZIP, run START_V22_WINDOWS.bat, and open http://127.0.0.1:8877. Python 3.11+ is required.
+
+Test login: free@test.invalid
+Password: Forge27-Test-Only!
+
+Click Requirement review. Every item requires a decision, feedback, observed evidence, and environment. Nothing is pre-approved. Export your review as JSON for tracking.
+
+Validation: 121 automated tests, browser checks, and clean-package startup passed. Native Windows execution remains unverified.
+
+BotForge27-v2.2-review.html
+HTML
+BotForge27-v2.2-build-report.md
+Document
+Saturday 7:42 PM
+If i want to change the business logo or name, can that be done via the content management section asic account information:
+
+SELECT id, username, role, plan, status FROM users;
+
+Avoid manually changing balances, floors, orders or permissions—those changes can break the app’s protections and accounting.
+
+i want to view datasets as tables in vs code
+
+Yes—you can browse the app’s SQLite datasets as tables inside VS Code.
+
+Open Extensions with Ctrl+Shift+X.
+Search for SQLite Viewer and install SQLite Viewer by Florian Klampfer.
+Open your extracted BotForge27 folder in VS Code.
+In the Explorer, click a database:
+pilot-data/platform.sqlite3 — accounts, settings, reviews and business records.
+pilot-data/private/<account-id>/sandbox.sqlite3 — trading data.
+For public-feed sessions, look inside pilot-public-data/.
+Select a table in the viewer to browse its rows and columns.
+
+Start with these tables:
+
+Table	Contents
+users	Test accounts and roles
+trades	Retained trading records
+records	Bots, configurations and other application records; details are in the JSON body column
+reviews	Checklist decisions and feedback
+audit	Recorded actions
+quota	Monthly day usage
+
+Use the viewer’s read-only mode to inspect the data without changing it.
