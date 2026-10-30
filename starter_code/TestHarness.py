@@ -166,12 +166,16 @@ class Forwarder(object):
         self.test_state = "NEW"
         self.sender_addr = None
         self.receiver_addr = ('127.0.0.1', self.receiver_port)
-        self.recv_outfile = "127.0.0.1.%d" % self.port
+        received_dir = os.path.join(
+            os.path.dirname(os.path.abspath(self.receiver_path)), "received"
+        )
+        output_prefix = "127_0_0_1_%d_" % self.port
+        output_suffix = "_" + os.path.basename(input_file)
+        existing_outputs = (
+            set(os.listdir(received_dir)) if os.path.isdir(received_dir) else set()
+        )
         self.in_queue = []
         self.out_queue = []
-
-        if os.path.exists(self.recv_outfile):
-            os.remove(self.recv_outfile)
 
         receiverCmd = ["python", self.receiver_path,
                                      "-p", str(self.receiver_port)
@@ -226,6 +230,20 @@ class Forwarder(object):
                 pass
             finally:
                 self.sock.settimeout(timeout)
+
+        if os.path.isdir(received_dir):
+            new_outputs = [
+                os.path.join(received_dir, name)
+                for name in os.listdir(received_dir)
+                if name.startswith(output_prefix)
+                and name.endswith(output_suffix)
+                and name not in existing_outputs
+            ]
+        else:
+            new_outputs = []
+        if not new_outputs:
+            raise RuntimeError("No file received in the receiver's received folder")
+        self.recv_outfile = max(new_outputs, key=os.path.getmtime)
 
         if not os.path.exists(self.recv_outfile):
             raise RuntimeError("No data received by receiver!")

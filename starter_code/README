@@ -90,6 +90,10 @@ To run a test using this test harness, do the following:
 
     python TestHarness.py -s YourSender.py -r Receiver.py
 
+The sender includes the source filename in its SYN packet. The receiver saves
+each transfer in a `received` folder next to `Receiver.py`, using the format
+`ip_port_date-time_filename` (with IP address periods replaced by underscores).
+
 where "YourSender.py" is the path to your sender implementation, "Receiver.py"
 is the path to the receiver implementation. Inside TestHarness.py, you need to
 modify the function "tests_to_run" at the top of the script to include any test

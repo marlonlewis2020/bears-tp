@@ -1,19 +1,37 @@
 import socket
 import getopt
+import os
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 
 import Checksum
 
 class Connection():
-    def __init__(self,host,port,start_seq,debug=False):
+    def __init__(self,host,port,start_seq,filename,debug=False):
         self.debug = debug
         self.updated = time.time()
         self.current_seqno = start_seq - 1 # expect to ack from the start_seqno
         self.host = host
         self.port = port
         self.max_buf_size = 7
-        self.outfile = open("%s.%d" % (host,port),"wb")
+        safe_filename = os.path.basename(filename.replace("\\", "/"))
+        if safe_filename in ("", ".", ".."):
+            raise ValueError("Invalid filename in SYN packet")
+        received_dir = Path(__file__).resolve().parent / "received"
+        received_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S_%f")
+        prefix = f"{host.replace('.', '_')}_{port}_{timestamp}"
+        self.output_path = received_dir / f"{prefix}_{safe_filename}"
+        suffix = 1
+        while True:
+            try:
+                self.outfile = self.output_path.open("xb")
+                break
+            except FileExistsError:
+                self.output_path = received_dir / f"{prefix}_{suffix}_{safe_filename}"
+                suffix += 1
         self.seqnums = {} # enforce single instance of each seqno
 
     def ack(self, seqno, data, sackMode = False):
@@ -119,7 +137,13 @@ class Receiver():
 
     def _handle_syn(self, seqno, data, address):
         if not address in self.connections:
-            self.connections[address] = Connection(address[0],address[1],seqno,self.debug)
+            try:
+                filename = data.decode("utf-8") if data else "received_file"
+            except UnicodeDecodeError as error:
+                raise ValueError("Filename in SYN packet is not valid UTF-8") from error
+            self.connections[address] = Connection(
+                address[0], address[1], seqno, filename, self.debug
+            )
         conn = self.connections[address]
         ackno, res_data = conn.ack(seqno,data,self.sackMode)
         #for l in res_data:

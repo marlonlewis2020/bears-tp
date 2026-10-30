@@ -20,6 +20,7 @@ class Sender(BasicSender.BasicSender):
         self.base_seqno = None
         self.sqno_init = random.randint(0, (2 ** 16) - 1)
         self.sqno_counter = self.sqno_init
+        self.transfer_filename = Path(filename).name if filename else "stdin"
         self.msg_table = {}
         self.msg_size = 1472 - len("DAT|0000000000||0000000000") # 1472 bytes - header size
         self.timeout = 0.5
@@ -64,9 +65,9 @@ class Sender(BasicSender.BasicSender):
         # take a file and break it into chunks of msg_size, add each chunk to the msg_table with a unique sequence number and return the sequence number of the last chunk added
         self.msg_table = {}
 
-        # initialize first packet as empty syn packet
+        # Include the filename in SYN so the receiver can name the output file.
         seqno = self._get_next_seqno()
-        packet = self.make_packet("syn", seqno, "")
+        packet = self.make_packet("syn", seqno, self.transfer_filename)
         self._add_to_msg_table(seqno, packet)
         self.debug_print(f"Added initial syn packet with seqno {seqno} to msg_table.")
 
