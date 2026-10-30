@@ -43,7 +43,7 @@ class Connection():
 
 
     def record(self,data):
-        self.outfile.write(data if type(data) == bytes else data.encode("utf-8"))
+        self.outfile.write(data if isinstance(data, bytes) else data.encode("utf-8"))
         self.outfile.flush()
 
     def end(self):
@@ -111,11 +111,11 @@ class Receiver():
             m = "sack|%s|" % seqno
         else:
             m = "ack|%s|" % seqno
-        checksum = Checksum.generate_checksum(m if type(m) == bytes else m.encode('utf-8'))
+        checksum = Checksum.generate_checksum(m.encode("utf-8"))
         message = "%s%s" % (m, checksum)
         if self.debug:
             print ("Receiver.py: send ack %s" % m)
-        self.send(message if type(message) == bytes else message.encode('utf-8'), address)
+        self.send(message.encode("utf-8"), address)
 
     def _handle_syn(self, seqno, data, address):
         if not address in self.connections:
@@ -136,7 +136,7 @@ class Receiver():
             for l in res_data:
                 #if self.debug:
                 #    print l
-                conn.record(l if type(l) == bytes else l.decode('utf-8'))
+                conn.record(l)
             self._send_ack(ackno, address)
 
     # handle end packets
@@ -147,7 +147,7 @@ class Receiver():
             for l in res_data:
                 #if self.debug:
                 #    print l
-                conn.record(l if type(l) == bytes else l.decode('utf-8'))
+                conn.record(l)
             self._send_ack(ackno, address)
 
     # I'll do the ack-ing here, buddy
@@ -160,16 +160,18 @@ class Receiver():
 
     def _split_message(self, message):
         pieces = message.split(b'|')
+        if len(pieces) < 3:
+            raise ValueError("Malformed packet")
         msg_type, seqno = pieces[0:2] # first two elements always treated as msg type and seqno
         checksum = pieces[-1] # last is always treated as checksum
         data = b'|'.join(pieces[2:-1]) # everything in between is considered data
         return msg_type, seqno, data, checksum
 
     def _cleanup(self):
-        if self.debug:
+        if self.debug: 
             print ("Receiver.py: clean up time")
         now = time.time()
-        for address in sorted(self.connections.keys()):
+        for address in list(self.connections.keys()).copy():
             conn = self.connections[address]
             if now - conn.updated > self.timeout:
                 if self.debug:

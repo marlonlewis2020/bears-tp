@@ -70,22 +70,21 @@ class Sender(BasicSender.BasicSender):
         self._add_to_msg_table(seqno, packet)
         self.debug_print(f"Added initial syn packet with seqno {seqno} to msg_table.")
 
-        prior_chunk = None
         while True:
             chunk = self.infile.read(self.msg_size)
             if not chunk:
-                self.final_seqno = seqno
-                packet = self.make_packet("fin", seqno, prior_chunk)
-                self._add_to_msg_table(seqno, packet)
-                self.debug_print(f"Reached end of file. Final sequence number is {self.final_seqno}.")
                 break
-            else:
-                seqno = self._get_next_seqno()
-                prior_chunk = chunk
-                # Set msg type for packets to DAT
-                packet = self.make_packet("dat", seqno, chunk)
-                self._add_to_msg_table(seqno, packet)
-                self.debug_print(f"Added packet with seqno {seqno} to msg_table.")
+
+            seqno = self._get_next_seqno()
+            packet = self.make_packet("dat", seqno, chunk)
+            self._add_to_msg_table(seqno, packet)
+            self.debug_print(f"Added packet with seqno {seqno} to msg_table.")
+
+        seqno = self._get_next_seqno()
+        self.final_seqno = seqno
+        packet = self.make_packet("fin", seqno)
+        self._add_to_msg_table(seqno, packet)
+        self.debug_print(f"Reached end of file. Final sequence number is {self.final_seqno}.")
         return seqno
 
     def run(self):

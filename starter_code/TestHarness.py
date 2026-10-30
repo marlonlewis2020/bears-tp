@@ -15,13 +15,12 @@ you want to run. The tests automatically register themselves with the
 forwarder, so they will magically be run.
 """
 def tests_to_run(forwarder):
-    filename = "README" # "b.png"
-    BasicTest.BasicTest("BasicTest", forwarder, "README") # Pass for image and text files #
-    RandomDropTest.RandomDropTest("RandDropTest", forwarder, "README") # Pass # for text files #
-    SackRandomDropTest.SackRandomDropTest("SackTest", forwarder, "README") # Pass # for image and text files #
-    SeqnoAndTypeTest.SeqnoAndTypeTest("BinaryDrpDat", f, filename, seqnos = range(0,10000,2), types = ["dat"]) # Pass # for text files #
-    SeqnoAndTypeTest.SeqnoAndTypeTest("DropSyn", f, filename, seqnos = range(0,10000), types = ["syn"]) # Pass # for text files #
-    SeqnoAndTypeTest.SeqnoAndTypeTest("DropAtBeginning", f, filename, seqnos = range(0,10), types = ["syn", "dat"]) # Pass # for text files #
+    BasicTest.BasicTest("BasicTest", forwarder, "README")
+    RandomDropTest.RandomDropTest("RandDropTest", forwarder, "README")
+    SackRandomDropTest.SackRandomDropTest("SackTest", forwarder, "README")
+    SeqnoAndTypeTest.SeqnoAndTypeTest("BinaryDrpDat", forwarder, "b.png", seqnos = range(0,10000,2), types = ["dat"])
+    SeqnoAndTypeTest.SeqnoAndTypeTest("DropSyn", forwarder, "b.png", seqnos = range(0,10000), types = ["syn"])
+    SeqnoAndTypeTest.SeqnoAndTypeTest("DropAtBeginning", forwarder, "b.png", seqnos = range(0,10), types = ["syn", "dat"])
 
 """
 Testing is divided into two pieces: this forwarder and a set of test cases in
@@ -104,6 +103,9 @@ class Forwarder(object):
 
     def _send(self, packet):
         """ Send a packet. """
+        if packet.bogon:
+            self.sock.sendto(packet.full_packet, packet.address)
+            return
         packet.update_packet(seqno=packet.seqno + self.start_seqno_base, update_checksum=False)
         self.sock.sendto(packet.full_packet, packet.address)
 
@@ -238,21 +240,23 @@ class Forwarder(object):
 
 class Packet(object):
     def __init__(self, packet, address, start_seqno_base, sackMode):
-        self.full_packet = packet  #message content
+        self.full_packet = packet if isinstance(packet, bytes) else packet.encode("utf-8")
         self.address = address # where the packet is destined to
         self.sack_str = ''
-        
+
         # this is for making sure we have 0-indexed seq numbers throughout the
         # test.
         self.start_seqno_base = start_seqno_base
         try:
-            pieces = packet = packet.decode("utf-8").split("|") if type(packet)==bytes else packet.split('|')
-            self.msg_type, self.seqno_str = pieces[0:2] # first two elements always treated as msg type and seqno
-            self.checksum = pieces[-1] # last is always treated as checksum
-            self.data = '|'.join(pieces[2:-1]) # everything in between is considered data
+            pieces = self.full_packet.split(b'|')
+            self.msg_type = pieces[0].decode("ascii")
+            self.seqno_str = pieces[1].decode("ascii")
+            self.checksum = pieces[-1].decode("ascii")
+            self.data = b'|'.join(pieces[2:-1])
             if sackMode and self.msg_type == "sack":
-                self.seqno = int(self.seqno_str.split(';')[0]) - self.start_seqno_base
-                self.sack_str = self.seqno_str.split(';')[1]
+                ack_fields = self.seqno_str.split(';', 1)
+                self.seqno = int(ack_fields[0]) - self.start_seqno_base
+                self.sack_str = ack_fields[1] if len(ack_fields) > 1 else ''
             else:
                 self.seqno = int(self.seqno_str) - self.start_seqno_base
             assert(self.msg_type in ["syn", "fin", "dat", "ack", "sack"])
@@ -283,28 +287,30 @@ class Packet(object):
             if data == None:
                 data = self.data
 
+            msg_type_bytes = msg_type.encode("ascii")
             if msg_type == "ack": # doesn't have a data field, so handle separately
-                body = "%s|%d|" % (msg_type, seqno)
-                checksum_body = "%s|%d|" % (msg_type, seqno + self.start_seqno_base)
+                body = msg_type_bytes + b"|" + str(seqno).encode("ascii") + b"|"
+                checksum_body = msg_type_bytes + b"|" + str(seqno + self.start_seqno_base).encode("ascii") + b"|"
             elif msg_type == "sack":
-                body = "%s|%d;%s|" % (msg_type, seqno, self.sack_str)
-                checksum_body = "%s|%d;%s|" % (msg_type, seqno + self.start_seqno_base, self.sack_str)
+                sack_bytes = self.sack_str.encode("ascii")
+                body = msg_type_bytes + b"|" + str(seqno).encode("ascii") + b";" + sack_bytes + b"|"
+                checksum_body = msg_type_bytes + b"|" + str(seqno + self.start_seqno_base).encode("ascii") + b";" + sack_bytes + b"|"
             else:
-                body = "%s|%d|%s|" % (msg_type,seqno,data)
-                checksum_body = "%s|%d|%s|" % (msg_type, seqno + self.start_seqno_base, data)
+                data_bytes = data if isinstance(data, bytes) else str(data).encode("utf-8")
+                body = msg_type_bytes + b"|" + str(seqno).encode("ascii") + b"|" + data_bytes + b"|"
+                checksum_body = msg_type_bytes + b"|" + str(seqno + self.start_seqno_base).encode("ascii") + b"|" + data_bytes + b"|"
             if update_checksum:
-                checksum = Checksum.generate_checksum(checksum_body)
+                checksum = Checksum.generate_checksum(checksum_body).encode("ascii")
             else:
-                checksum = self.checksum
+                checksum = self.checksum.encode("ascii")
             self.msg_type = msg_type
             self.seqno = seqno
             self.data = data
-            self.checksum = checksum
+            self.checksum = checksum.decode("ascii")
             if full_packet:
-                self.full_packet = full_packet
+                self.full_packet = full_packet if isinstance(full_packet, bytes) else full_packet.encode("utf-8")
             else:
-                self.full_packet = "%s%s" % (body,checksum)
-                self.full_packet = self.full_packet.encode("utf-8")
+                self.full_packet = body + checksum
 
     def __repr__(self):
         return "%s|%s|...|%s" % (self.msg_type, self.seqno, self.checksum)
