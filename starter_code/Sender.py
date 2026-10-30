@@ -23,6 +23,7 @@ class Sender(BasicSender.BasicSender):
         self.msg_table = {}
         self.msg_size = 1472 - len("DAT|0000000000||0000000000") # 1472 bytes - header size
         self.timeout = 0.5
+        self.timeout_retransmit_limit = 15
         self.unacked_packets = {}
         self.swnd = 7 # sliding window size
         self.ack_tracker = {}
@@ -115,7 +116,7 @@ class Sender(BasicSender.BasicSender):
                 self.unacked_packets[seqno] = {}
                 self.unacked_packets[seqno]['packet'] = self.msg_table.pop(seqno)
                 self.unacked_packets[seqno]['time_out'] = time.monotonic() + self.timeout
-                self.unacked_packets[seqno]['timeout_retransmit_limit'] = 5
+                self.unacked_packets[seqno]['timeout_retransmit_limit'] = self.timeout_retransmit_limit
                 self.ack_tracker[seqno] = 0
             else:
                 break
@@ -373,19 +374,21 @@ class Sender(BasicSender.BasicSender):
                     break
                 else:
                     # get response for all unacked packets, and add response to responses
-                    for seqno in sorted(self.unacked_packets.keys()):
+                    for seqno in sorted(self.unacked_packets.keys(), reverse=True):
                         mtype,ack,_,res = self.get_responses()
                         if res is not None:
                             ack, seqnos = self.split_sack(ack)
                             ack_value, msg_type, responses[self.get_ackno(ack)], largest, largest_decoded, largest_seq = self.get_largest(mtype,msg_type,ack,ack_value,res)
                             print(f"Sender.py: response received {res} for seq no {self.get_ackno(ack)-1}")
+                            break
                         else:
                             if self.unacked_packets[seqno]['timeout_retransmit_limit']:
                                 self.retransmit_packet(seqno)
+                                continue # continue to wait for response for the retransmitted packet
                             else:
                                 print(f"Retransmit limit reached - closing app.")
                                 end=True
-                            break
+                        break
                     if end: 
                         break
                 continue
@@ -451,7 +454,18 @@ class Sender(BasicSender.BasicSender):
                     for _ in sorted(responses.keys()):
                         if _ <= ack:
                             responses.pop(_)
-                    
+                else:
+                    # check remaining acks in responses, if any, and continue to wait for valid ack
+                    print(f"Sender.py: [error] Invalid ack received.")
+                    responses.pop(largest_decoded, None)
+
+                    largest_decoded = max(responses.keys()) if responses else None
+                    ack_value = str(largest).encode('utf-8') if largest else b'0'
+                    largest = ack_value
+                    largest_seq = largest_decoded - 1 if largest_decoded else 0
+                    msg_type = responses[largest_decoded].split(b"|")[0] if largest_decoded else b''
+                    continue
+
                 # if not - send remaining packets and await remaining acks, else end
                 if (not self.sackMode and msg_type.decode('utf-8') == "sack") \
                     or (self.sackMode and not msg_type.decode('utf-8') == "sack"):
@@ -514,20 +528,17 @@ class Sender(BasicSender.BasicSender):
 
         # try to get and open file using filename, if not found, exit with error message
         try:
-            if self.infile == sys.stdin:
+            if self.infile is sys.stdin:
                 self.debug_print("Reading from standard input.")
-                filename = Path(input("Enter filename: ")).as_posix()
-                if not Path(filename).is_file():
-                    print(f"File not found: {filename}")
-                    self.close_app()
-                self.infile = open(filename, "rb")
+                self.infile = sys.stdin.buffer
 
             self.debug_print(f"Opening file: {self.infile.name}")
+            print(f"Opening file: {self.infile.name}")
             self.build_msg_table(self.infile)
             self.run()
         except Exception as e:
             print(f"Error opening file: {e}")
-            sys.exit(1)
+        sys.exit(1)
 '''
 This will be run if you run this script from the command line. You should not
 change any of this; the grader may rely on the behavior here to test your
@@ -553,7 +564,7 @@ if __name__ == "__main__":
     # Set default values for arguments.
     port = 33122
     dest = "localhost"
-    filename = None
+    filename = None # "C:\\Users\\mlewis\\Downloads\\example.txt"
     debug = False
     sackMode = False
 
