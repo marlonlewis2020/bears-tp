@@ -550,6 +550,8 @@ class Sender(BasicSender.BasicSender):
             self.run()
         except Exception as e:
             print(f"Error opening file: {e}")
+        finally:
+            print("Closing client connection and app")
             sys.exit(1)
 '''
 This will be run if you run this script from the command line. You should not
