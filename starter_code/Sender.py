@@ -316,8 +316,8 @@ class Sender(BasicSender.BasicSender):
         checksum = Checksum.generate_checksum(body).encode("ascii")
         packet = body + checksum
 
-        print("Full packet:", repr(packet))
-        print("Checksum valid:", Checksum.validate_checksum(packet))
+        self.debug_print("Full packet:", repr(packet))
+        self.debug_print("Checksum valid:", Checksum.validate_checksum(packet))
 
         return packet
 

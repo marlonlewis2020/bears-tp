@@ -13,7 +13,7 @@ class Connection():
         self.host = host
         self.port = port
         self.max_buf_size = 7
-        self.outfile = open("%s.%d" % (host,port),"w")
+        self.outfile = open("%s.%d" % (host,port),"wb")
         self.seqnums = {} # enforce single instance of each seqno
 
     def ack(self, seqno, data, sackMode = False):
@@ -43,7 +43,7 @@ class Connection():
 
 
     def record(self,data):
-        self.outfile.write(data)
+        self.outfile.write(data if type(data) == bytes else data.encode("utf-8"))
         self.outfile.flush()
 
     def end(self):
@@ -111,11 +111,11 @@ class Receiver():
             m = "sack|%s|" % seqno
         else:
             m = "ack|%s|" % seqno
-        checksum = Checksum.generate_checksum(m if sys.version_info < (3, 10) else m.encode('utf-8'))
+        checksum = Checksum.generate_checksum(m if type(m) == bytes else m.encode('utf-8'))
         message = "%s%s" % (m, checksum)
         if self.debug:
             print ("Receiver.py: send ack %s" % m)
-        self.send(message if sys.version_info < (3, 10) else message.encode('utf-8'), address)
+        self.send(message if type(message) == bytes else message.encode('utf-8'), address)
 
     def _handle_syn(self, seqno, data, address):
         if not address in self.connections:
@@ -136,7 +136,7 @@ class Receiver():
             for l in res_data:
                 #if self.debug:
                 #    print l
-                conn.record(l if sys.version_info < (3, 10) else l.decode('utf-8'))
+                conn.record(l if type(l) == bytes else l.decode('utf-8'))
             self._send_ack(ackno, address)
 
     # handle end packets
@@ -147,7 +147,7 @@ class Receiver():
             for l in res_data:
                 #if self.debug:
                 #    print l
-                conn.record(l if sys.version_info < (3, 10) else l.decode('utf-8'))
+                conn.record(l if type(l) == bytes else l.decode('utf-8'))
             self._send_ack(ackno, address)
 
     # I'll do the ack-ing here, buddy
