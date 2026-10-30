@@ -541,6 +541,11 @@ class Sender(BasicSender.BasicSender):
 
             self.debug_print(f"Opening file: {self.infile.name}")
             print(f"Opening file: {self.infile.name}")
+
+            # check for empty file, if so, exit with error message
+            if Path(self.infile.name).stat().st_size == 0:
+                raise ValueError(f"File {self.infile.name} is empty.")
+            
             self.build_msg_table(self.infile)
             self.run()
         except Exception as e:
@@ -571,7 +576,7 @@ if __name__ == "__main__":
     # Set default values for arguments.
     port = 33122
     dest = "localhost"
-    filename = None # "C:\\Users\\mlewis\\Downloads\\example.txt"
+    filename = "C:\\Users\\mlewis\\Downloads\\example.txt"
     debug = False
     sackMode = False
 
@@ -590,8 +595,13 @@ if __name__ == "__main__":
 
     # run Sender.start() function created above, else exit for specific errors
     print(f"Starting Sender with destination: {dest}, port: {port}, file: {filename}, debug: {debug}, sackMode: {sackMode}")
-    s = Sender(dest,port,filename,debug,sackMode)
     try:
+        if filename == "<stdin>":
+            raise ValueError("No input file specified.")
+        if not Path(filename).exists():
+            raise FileNotFoundError(f"File {filename} not found.")
+        s = Sender(dest,port,filename,debug,sackMode)
         s.start()
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, ValueError, FileNotFoundError, SystemExit) as e:
+        print(f"Sender.py interrupted: {e}. Exiting.")
         exit()
