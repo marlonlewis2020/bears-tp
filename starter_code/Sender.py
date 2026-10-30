@@ -361,7 +361,8 @@ class Sender(BasicSender.BasicSender):
                 self.unacked_packets = {}
                 self.msg_table = {}
                 self.ack_tracker = {}
-                self.close_app()
+                responses = {}
+                # self.close_app()
 
         # Examine responses to ensure acknowledgement/reliability via responses
         end = False
@@ -485,8 +486,6 @@ class Sender(BasicSender.BasicSender):
                 self.debug_print(f"Error sending or receiving message: {e}. Retrying...")
                 break # TODO: consider other means for handling errors without closing app with break
         # close connection and app
-        print(f"Closing app")
-        self.close_app()
 
     def retransmit_packet(self, seqno:int):
         '''
@@ -543,7 +542,7 @@ class Sender(BasicSender.BasicSender):
             print(f"Opening file: {self.infile.name}")
 
             # check for empty file, if so, exit with error message
-            if Path(self.infile.name).stat().st_size == 0:
+            if Path(self.infile.name).exists() and Path(self.infile.name).stat().st_size == 0:
                 raise ValueError(f"File {self.infile.name} is empty.")
             
             self.build_msg_table(self.infile)
@@ -551,8 +550,10 @@ class Sender(BasicSender.BasicSender):
         except Exception as e:
             print(f"Error opening file: {e}")
         finally:
-            print("Closing client connection and app")
-            sys.exit(1)
+            self.close_app()
+
+            if self.infile is not sys.stdin.buffer:
+                self.infile.close()
 '''
 This will be run if you run this script from the command line. You should not
 change any of this; the grader may rely on the behavior here to test your
@@ -578,7 +579,7 @@ if __name__ == "__main__":
     # Set default values for arguments.
     port = 33122
     dest = "localhost"
-    filename = "C:\\Users\\mlewis\\Downloads\\example.txt"
+    filename = None # "C:\\Users\\mlewis\\Downloads\\example.txt"
     debug = False
     sackMode = False
 
@@ -598,9 +599,10 @@ if __name__ == "__main__":
     # run Sender.start() function created above, else exit for specific errors
     print(f"Starting Sender with destination: {dest}, port: {port}, file: {filename}, debug: {debug}, sackMode: {sackMode}")
     try:
-        if filename == "<stdin>":
-            raise ValueError("No input file specified.")
-        if not Path(filename).exists():
+        if filename is None:
+            print("No file specified.")
+            raise ValueError("No file specified. Please provide a file to send using the -f or --file option.")
+        if filename is not None and not Path(filename).exists():
             raise FileNotFoundError(f"File {filename} not found.")
         s = Sender(dest,port,filename,debug,sackMode)
         s.start()
