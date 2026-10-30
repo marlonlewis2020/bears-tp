@@ -135,7 +135,7 @@ class Sender(BasicSender.BasicSender):
         # validate the ack_seqno received from the receiver, if it is in the unacked_packets, 
         # remove all cumulative acknowledgments and return the counter value for the expected sequence number, else return None
         if self.sackMode:
-            print(f"Sender.py: Processing SACK sequence numbers: {sack_seqnos}.")
+            self.debug_print(f"Sender.py: Processing SACK sequence numbers: {sack_seqnos}.")
             for sack_seqno in sack_seqnos:
                 self.selective_ack_packet(sack_seqno)
             self.debug_print(f"Processed SACK sequence numbers: {sack_seqnos}.")
@@ -234,12 +234,12 @@ class Sender(BasicSender.BasicSender):
         '''
         This method manages the transmission of messages into the receiver based on the sliding window.
         '''
-        print(f"Sender.py: Sending burst of packets into receiver's buffer.")
+        self.debug_print(f"Sender.py: Sending burst of packets into receiver's buffer.")
         # send all packets in the unacked_packets and start the retransmit timer for each packet
         for seqno, item in self.unacked_packets.items():
             if not item['sent']:
                 self.single_send(seqno)
-        print(f"All packets in unacked_packets sent. Last sequence number sent: {max(self.unacked_packets.keys()) if self.unacked_packets else None}. Waiting for ACKs.")
+        self.debug_print(f"All packets in unacked_packets sent. Last sequence number sent: {max(self.unacked_packets.keys()) if self.unacked_packets else None}. Waiting for ACKs.")
 
     def is_file_sending_complete(self):
         '''
@@ -337,7 +337,7 @@ class Sender(BasicSender.BasicSender):
         return packet
 
     def handle_response(self):
-        print("Sender.py: Handling responses from receiver.")
+        self.debug_print("Sender.py: Handling responses from receiver.")
         expected_type = b"sack" if self.sackMode else b"ack"
 
         while self.msg_table or self.unacked_packets:
@@ -345,7 +345,7 @@ class Sender(BasicSender.BasicSender):
                 available = self.swnd - len(self.unacked_packets)
                 self.populate_unacked_packets(available)
                 self.send_into_window()
-                print(f"Sender.py: Current unacked_packets: {list(self.unacked_packets.keys())}. Current msg_table: {list(self.msg_table.keys())}.")
+                self.debug_print(f"Sender.py: Current unacked_packets: {list(self.unacked_packets.keys())}. Current msg_table: {list(self.msg_table.keys())}.")
 
             try:
                 self.debug_print("Sender.py: Calculating deadlines for unacked packets.")
@@ -372,7 +372,7 @@ class Sender(BasicSender.BasicSender):
                             raise ValueError("Max retransmissions reached. Closing app.")
                             # close_app() will be called inside start() if the limit is reached
                 continue
-            print(f"Sender.py: Received response: {response!r}")
+            self.debug_print(f"Sender.py: Received response: {response!r}")
             fields = response.split(b"|")
             if len(fields) != 3 or fields[0] != expected_type:
                 self.debug_print(f"Ignoring malformed or unexpected response: {response!r}")
@@ -392,7 +392,7 @@ class Sender(BasicSender.BasicSender):
                 self.debug_print(f"Ignoring response with invalid ACK number: {response!r}")
                 continue
             
-            print(f"Sender.py: Valid ACK received for seqno {ack_seqno}. Processing ACK and SACKs: {sack_seqnos}.")
+            self.debug_print(f"Sender.py: Valid ACK received for seqno {ack_seqno}. Processing ACK and SACKs: {sack_seqnos}.")
             acknowledged_seqno = (ack_seqno - 1) % (2 ** 32)
             if acknowledged_seqno not in self.sent_seqnos:
                 self.debug_print(f"Ignoring ACK for unsent sequence number {ack_seqno}.")
@@ -403,7 +403,7 @@ class Sender(BasicSender.BasicSender):
                     self.unacked_packets.pop(seqno)
                     self.ack_tracker.pop(seqno, None)
 
-            print(f"Sender.py: Cumulative ACK processed. Remaining unacked packets: {list(self.unacked_packets.keys())}.")
+            self.debug_print(f"Sender.py: Cumulative ACK processed. Remaining unacked packets: {list(self.unacked_packets.keys())}.")
             if self._seqno_before(self.sqno_init, ack_seqno):
                 self.handshake_pending = False
             self.sack_packets(sack_seqnos)
@@ -445,18 +445,20 @@ class Sender(BasicSender.BasicSender):
         # closing socket and app
         print("Closing client connection and app")
         # wait for late packets
-        print(f"Waiting for late packets...")
+        self.debug_print("Waiting for late packets...")
         for counter in list(range(5)):
-            time.sleep(1)
             print(f"{5-counter} seconds remaining.\r", end="")
+            time.sleep(1)
+        # print("\rClosing socket and exiting app.")
+        print(f"\r0 seconds remaining.")
         self.debug_print("Closing socket.")
         self.sock.close()
+        print("App closed.")
         exit()
 
     # Main sending loop.
     def start(self):
         # add things here
-        time.sleep(0.5) # wait for receiver to start up
         try:
             if self.debug and self.debug_print:
                 print("[Debug mode is enabled]")

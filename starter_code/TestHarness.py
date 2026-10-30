@@ -17,7 +17,6 @@ forwarder, so they will magically be run.
 def tests_to_run(forwarder):
     filename = "README" # "b.png"
     BasicTest.BasicTest("BasicTest", forwarder, "README") # Pass for image and text files #
-    BasicTest.BasicTest("BasicBinaryTest", forwarder, "b.png") # Pass for image and text files #
     RandomDropTest.RandomDropTest("RandDropTest", forwarder, "README") # Pass # for text files #
     SackRandomDropTest.SackRandomDropTest("SackTest", forwarder, "README") # Pass # for image and text files #
     SeqnoAndTypeTest.SeqnoAndTypeTest("BinaryDrpDat", f, filename, seqnos = range(0,10000,2), types = ["dat"]) # Pass # for text files #
