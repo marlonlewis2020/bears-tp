@@ -60,7 +60,7 @@ class Sender(BasicSender.BasicSender):
         This methos is for building the message table based on the file selected. 
         The message table is use for tracking all file packets to be sent.
         '''
-        print("Sender.py: Making packets and building packets table.")
+        self.debug_print("Sender.py: Making packets and building packets table.")
         # take a file and break it into chunks of msg_size, add each chunk to the msg_table with a unique sequence number and return the sequence number of the last chunk added
         self.msg_table = {}
 
@@ -364,12 +364,11 @@ class Sender(BasicSender.BasicSender):
                 raise Exception("Error while calculating deadlines.") from e
 
             if response is None:
-                print("Sender.py: Timeout occurred while waiting for response.")
                 now = time.monotonic()
                 for seqno, item in list(self.unacked_packets.items()):
                     if not item['sacked'] and item['time_out'] is not None and item['time_out'] <= now:
                         if not self.retransmit_packet(seqno):
-                            print(f"Sender.py: Max retransmissions reached for seqno {seqno}. Closing app.")
+                            self.debug_print(f"Sender.py: Max retransmissions reached for seqno {seqno}. Closing app.")
                             raise ValueError("Max retransmissions reached. Closing app.")
                             # close_app() will be called inside start() if the limit is reached
                 continue
@@ -417,7 +416,7 @@ class Sender(BasicSender.BasicSender):
         This method is responsible for time-out and triple ack packet retransmisions.
         It enforces the use of a retransmission limit and verifies that the packet response is expected and has not yet been acknowledged
         '''
-        print(f"Sender.py: Retransmitting packet with sequence no. {seqno}.")
+        self.debug_print(f"Sender.py: Retransmitting packet with sequence no. {seqno}.")
         # check if packet still unacknowledged and the time-out retransmit limit
         item = self.unacked_packets.get(seqno, None)
         if item and item.get('sacked'):
@@ -541,5 +540,4 @@ if __name__ == "__main__":
         s = Sender(dest,port,filename,debug,sackMode)
         s.start()
     except (KeyboardInterrupt, ValueError, FileNotFoundError, SystemExit) as e:
-        print(f"Sender.py interrupted: {e}. Exiting.")
         exit()
