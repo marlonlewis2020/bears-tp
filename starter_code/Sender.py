@@ -23,11 +23,13 @@ class Sender(BasicSender.BasicSender):
         self.msg_table = {}
         self.msg_size = 1472 - len("DAT|0000000000||0000000000") # 1472 bytes - header size
         self.timeout = 0.5
-        self.timeout_retransmit_limit = 15
+        self.timeout_retransmit_limit = 50
         self.unacked_packets = {}
         self.swnd = 7 # sliding window size
         self.ack_tracker = {}
         self.final_seqno = None
+        self.sent_seqnos = set()
+        self.handshake_pending = True
 
     def debug_print(self, message:str, function:str=None):
         '''
@@ -108,19 +110,22 @@ class Sender(BasicSender.BasicSender):
         '''
         This function is called to stage all outstanding messages from the message table to prepare them to be sent.
         '''
-        if not size:
+        if size is None:
             size = self.swnd
         # populate the unacked_packets with the next swnd chunks from the msg_table, update the ack_tracker with the sequence numbers of the chunks added to the unacked_packets
-        for seqno in sorted(self.msg_table.keys())[:size]:
+        for seqno in list(self.msg_table.keys())[:size]:
+            self.debug_print(f"Sender.py: Populating unacked_packets with seqno {seqno}.")
             if len(self.unacked_packets) < self.swnd:
                 self.unacked_packets[seqno] = {}
                 self.unacked_packets[seqno]['packet'] = self.msg_table.pop(seqno)
-                self.unacked_packets[seqno]['time_out'] = time.monotonic() + self.timeout
+                self.unacked_packets[seqno]['time_out'] = None
                 self.unacked_packets[seqno]['timeout_retransmit_limit'] = self.timeout_retransmit_limit
+                self.unacked_packets[seqno]['sacked'] = False
+                self.unacked_packets[seqno]['sent'] = False
                 self.ack_tracker[seqno] = 0
             else:
                 break
-        self.base_seqno = min(self.unacked_packets.keys()) if self.unacked_packets else None
+        self.base_seqno = next(iter(self.unacked_packets), None)
         self.debug_print(f"Populated unacked_packets with {size} chunks from msg_table. Base sequence number is now {self.base_seqno}.")
 
     def get_sack_seqnos(self, sack_seqnos:bytes):
@@ -130,10 +135,18 @@ class Sender(BasicSender.BasicSender):
         # validate the ack_seqno received from the receiver, if it is in the unacked_packets, 
         # remove all cumulative acknowledgments and return the counter value for the expected sequence number, else return None
         if self.sackMode:
-            print(f"Processing SACK sequence numbers: {sack_seqnos}.")
+            print(f"Sender.py: Processing SACK sequence numbers: {sack_seqnos}.")
             for sack_seqno in sack_seqnos:
                 self.selective_ack_packet(sack_seqno)
             self.debug_print(f"Processed SACK sequence numbers: {sack_seqnos}.")
+
+    @staticmethod
+    def _seqno_before(seqno: int, ack_seqno: int) -> bool:
+        '''
+        This method checks if a sequence number is before an acknowledgment sequence number, considering wrap-around.
+        '''
+        distance = (ack_seqno - seqno) % (2 ** 32)
+        return 0 < distance < (2 ** 31)
     
     def validate_ack(self, ack_seqno:str|int, msg_type:bytes, response:bytes):
         '''
@@ -211,11 +224,9 @@ class Sender(BasicSender.BasicSender):
         '''
         This method performs selective acknowledgements.
         '''
-        # remove the packet from the unacked_packets and ack_tracker with the sequence number equal to the sack_seqno
-        if sack_seqno in sorted(self.unacked_packets.keys()):
-            self.unacked_packets.pop(sack_seqno)
-            self.ack_tracker.pop(sack_seqno)
-            self.debug_print(f"Selective ACK received for seqno {sack_seqno}. Packet removed from unacked_packets.")
+        if sack_seqno in self.unacked_packets:
+            self.unacked_packets[sack_seqno]['sacked'] = True
+            self.debug_print(f"Selective ACK received for seqno {sack_seqno}.")
         else:
             self.debug_print(f"Selective ACK received for seqno {sack_seqno}, but packet not found in unacked_packets.")
 
@@ -225,9 +236,10 @@ class Sender(BasicSender.BasicSender):
         '''
         print(f"Sender.py: Sending burst of packets into receiver's buffer.")
         # send all packets in the unacked_packets and start the retransmit timer for each packet
-        for seqno in sorted(self.unacked_packets.keys())[:self.swnd]:
-            self.single_send(seqno)
-        self.debug_print(f"All packets in unacked_packets sent. Last sequence number sent: {max(self.unacked_packets.keys()) if self.unacked_packets else None}. Waiting for ACKs.")
+        for seqno, item in self.unacked_packets.items():
+            if not item['sent']:
+                self.single_send(seqno)
+        print(f"All packets in unacked_packets sent. Last sequence number sent: {max(self.unacked_packets.keys()) if self.unacked_packets else None}. Waiting for ACKs.")
 
     def is_file_sending_complete(self):
         '''
@@ -262,11 +274,13 @@ class Sender(BasicSender.BasicSender):
         '''
         packet = self.unacked_packets[seqno]['packet']
         if packet is None:
-            self.debug_print(f"Packet with seqno {seqno} not found in unacked_packets.")
+            print(f"Packet with seqno {seqno} not found in unacked_packets.")
             return
         super().send(packet)
         self.unacked_packets[seqno]['time_out'] = time.monotonic() + self.timeout
-        return
+        self.unacked_packets[seqno]['sent'] = True
+        self.sent_seqnos.add(seqno)
+        self.debug_print(f"Sender.py: Current unacked_packets: {list(self.unacked_packets.keys())}. Current msg_table: {list(self.msg_table.keys())}.")
 
     def get_ackno(self, ack_byte:bytes|str):
         return int(ack_byte) if type(ack_byte)==str else int(ack_byte.decode('utf-8'))
@@ -323,169 +337,80 @@ class Sender(BasicSender.BasicSender):
         return packet
 
     def handle_response(self):
-        '''
-        This method is responsible for logical handling of all responses from the receiver/server.
-        This method tracks responses only for the burst of messages sent.
-        '''
-        print("Sender.py: Handling responses from sender for previous burst of packets sent.")
-        end = False
-        responses = {}
-        response = b''
-        msg_type = b''
-        ack_value = b'0'
-        seqnos = []
-        largest_timeout_ack = 0
-        largest_seq = 0
-        count = 0
+        print("Sender.py: Handling responses from receiver.")
+        expected_type = b"sack" if self.sackMode else b"ack"
 
-        # get expected responses from receiver/server
-        while True:
-            if count >= len(self.unacked_packets):
-                # get as many responses as sent packets and then continue to response examination
-                break
+        while self.msg_table or self.unacked_packets:
+            if not self.handshake_pending and self.msg_table and len(self.unacked_packets) < self.swnd:
+                available = self.swnd - len(self.unacked_packets)
+                self.populate_unacked_packets(available)
+                self.send_into_window()
+                print(f"Sender.py: Current unacked_packets: {list(self.unacked_packets.keys())}. Current msg_table: {list(self.msg_table.keys())}.")
 
-            mtype,ack,_,res = self.get_responses()
-
-            if res is not None:
-                ack, seqnos = self.split_sack(ack)
-                count += 1
-                ack_value,msg_type,responses[self.get_ackno(ack)],largest,largest_decoded,largest_seq= self.get_largest(mtype, msg_type, ack, ack_value, res)
-
-                print(f"Sender.py: response received {res} for seq no {self.get_ackno(ack)-1}")
-            else:
-                break # response is None - i.e., time-out or packet loss.
-
-        # check if the cumulative ack 
-        if largest_seq == self.final_seqno:
-            if self.validate_ack(ack, msg_type, response):
-                self.unacked_packets = {}
-                self.msg_table = {}
-                self.ack_tracker = {}
-                responses = {}
-                # self.close_app()
-
-        # Examine responses to ensure acknowledgement/reliability via responses
-        end = False
-        while True:
-            # check if responses have been received, if not - retransmit and check against first retransmit limit
-            if not len(responses):
-                completed, open_receiver = self.is_file_sending_complete()
-                if completed: 
-                    print("All packets have been sent and acknowledged.")
-                    break
-                else:
-                    # get response for all unacked packets, and add response to responses
-                    for seqno in sorted(self.unacked_packets.keys(), reverse=True):
-                        mtype,ack,_,res = self.get_responses()
-                        if res is not None:
-                            ack, seqnos = self.split_sack(ack)
-                            ack_value, msg_type, responses[self.get_ackno(ack)], largest, largest_decoded, largest_seq = self.get_largest(mtype,msg_type,ack,ack_value,res)
-                            print(f"Sender.py: response received {res} for seq no {self.get_ackno(ack)-1}")
-                            break
-                        else:
-                            if self.unacked_packets[seqno]['timeout_retransmit_limit']:
-                                self.retransmit_packet(seqno)
-                                continue # continue to wait for response for the retransmitted packet
-                            else:
-                                print(f"Retransmit limit reached - closing app.")
-                                end=True
-                        break
-                    if end: 
-                        break
-                continue
-
-            # TODO: DONE: check if ack is invalid, if not - pop from responses and update response, and "largest" values again
-            # TODO: DONE: check for retransfer limit to close app, 
-            # TODO: DONE: check for time-out to re-transmit.
             try:
-                # check if time-out occurred
-                # cycle through "time-out limit" for each packet
-                for (seqno, item) in self.unacked_packets.items():
-                    # close app if retransfer limit is reached for any packet
-                    if not self.unacked_packets[seqno]['timeout_retransmit_limit']: 
-                        end = True
-                        break
-                    # set largest_changed param to later retransmit, if time-out occurs
-                    if self.is_timed_out(item) and seqno not in seqnos and seqno > largest_seq:
-                        largest_timeout_ack = seqno + 1
-
-                if end:
-                    # if retransmit limit is reached, close app
-                    print("Program closing - maximum retransmission limit reached.\r\nPlease retry later!")
-                    break
-
-                # re-transmit if time-out reached for a larger expected sequence_no 
-                # update response after retransmitting
-                if largest_timeout_ack > self.get_ackno(ack_value):
-                    success = self.retransmit_packet(largest_timeout_ack-1)
-                    if success:
-                        mtype,ack,_,res = self.get_responses()
-                        if res is not None:
-                            ack, seqnos = self.split_sack(ack)
-                            ack_value,msg_type,responses[self.get_ackno(ack)],largest,largest_decoded,largest_seq = self.get_largest(mtype, msg_type, ack, ack_value, res)
-                        else:
-                            if self.unacked_packets[seqno]['timeout_retransmit_limit']:
-                                self.retransmit_packet(seqno)
-                            else:
-                                print(f"Retransmit limit reached - closing app.")
-                                end=True
-                            break
-
-                # check ack validity
-                # check checksum, message type
-                # validate/ack relevant sequence numbers
-                response = responses.get(largest_decoded, None)
-                ack = self.get_ackno(ack_value)
-                if self.validate_ack(ack, msg_type, response):
-                    # check if complete file completely sent and acknowledged via responses, 
-                    # all selective acks are removed
-                    self.sack_packets(seqnos)
-                    if self.sackMode:
-                        for _ in seqnos:
-                            try:
-                                #if not yet removed
-                                self.debug_print(f"Attempting to remove {_+1} from resposes due to Selective ACK.")
-                                responses.pop(_+1)
-                            except:
-                                # already removed
-                                self.debug_print(f"ACK {_+1} already removed.")
-
-                    # all applicale cumulatively acknowledged unaked_packets cleared
-                    # all cumulatively acknowledged responses cleared
-                    for _ in sorted(responses.keys()):
-                        if _ <= ack:
-                            responses.pop(_)
-                else:
-                    # check remaining acks in responses, if any, and continue to wait for valid ack
-                    print(f"Sender.py: [error] Invalid ack received.")
-                    responses.pop(largest_decoded, None)
-
-                    if responses:
-                        largest_decoded = max(responses.keys())
-                        ack_value = str(largest_decoded).encode("utf-8")
-                        largest = ack_value
-                        largest_seq = largest_decoded - 1
-                        msg_type = responses[largest_decoded].split(b"|")[0]
-                    else:
-                        largest_decoded = None
-                        ack_value = b"0"
-                        largest = ack_value
-                        largest_seq = 0
-                        msg_type = b""
-                    continue
-
-                # if not - send remaining packets and await remaining acks, else end
-                if (not self.sackMode and msg_type.decode('utf-8') == "sack") \
-                    or (self.sackMode and not msg_type.decode('utf-8') == "sack"):
-                    print("Invalid message type - closing app.")
-                    break
-
-                self.debug_print(f"Waiting for valid/remaining ACKs. Current unacked_packets: {list(self.unacked_packets.keys())}")
-                continue
+                self.debug_print("Sender.py: Calculating deadlines for unacked packets.")
+                now = time.monotonic()
+                deadlines = [
+                    item['time_out']
+                    for item in self.unacked_packets.values()
+                    if not item['sacked'] and item['time_out'] is not None
+                ]
+                wait = max(0, min(deadlines) - now) if deadlines else self.timeout
+            
+                self.debug_print(f"Sender.py: Waiting for response with timeout of {wait:.2f} seconds.")
+                response = self.receive(timeout=wait)
             except Exception as e:
-                self.debug_print(f"Error sending or receiving message: {e}. Retrying...")
-                break # TODO: consider other means for handling errors without closing app with break
-        # close connection and app
+                self.debug_print(f"Sender.py: Error while calculating deadlines: {e}")
+                raise Exception("Error while calculating deadlines.") from e
+
+            if response is None:
+                print("Sender.py: Timeout occurred while waiting for response.")
+                now = time.monotonic()
+                for seqno, item in list(self.unacked_packets.items()):
+                    if not item['sacked'] and item['time_out'] is not None and item['time_out'] <= now:
+                        if not self.retransmit_packet(seqno):
+                            print(f"Sender.py: Max retransmissions reached for seqno {seqno}. Closing app.")
+                            raise ValueError("Max retransmissions reached. Closing app.")
+                            # close_app() will be called inside start() if the limit is reached
+                continue
+            print(f"Sender.py: Received response: {response!r}")
+            fields = response.split(b"|")
+            if len(fields) != 3 or fields[0] != expected_type:
+                self.debug_print(f"Ignoring malformed or unexpected response: {response!r}")
+                continue
+            if not Checksum.validate_checksum(response):
+                self.debug_print(f"Ignoring response with invalid checksum: {response!r}")
+                continue
+
+            try:
+                ack_field = fields[1]
+                if self.sackMode:
+                    ack_field, sack_seqnos = self.split_sack(ack_field)
+                else:
+                    sack_seqnos = []
+                ack_seqno = int(ack_field)
+            except (UnicodeDecodeError, ValueError):
+                self.debug_print(f"Ignoring response with invalid ACK number: {response!r}")
+                continue
+            
+            print(f"Sender.py: Valid ACK received for seqno {ack_seqno}. Processing ACK and SACKs: {sack_seqnos}.")
+            acknowledged_seqno = (ack_seqno - 1) % (2 ** 32)
+            if acknowledged_seqno not in self.sent_seqnos:
+                self.debug_print(f"Ignoring ACK for unsent sequence number {ack_seqno}.")
+                continue
+
+            for seqno in list(self.unacked_packets):
+                if self._seqno_before(seqno, ack_seqno):
+                    self.unacked_packets.pop(seqno)
+                    self.ack_tracker.pop(seqno, None)
+
+            print(f"Sender.py: Cumulative ACK processed. Remaining unacked packets: {list(self.unacked_packets.keys())}.")
+            if self._seqno_before(self.sqno_init, ack_seqno):
+                self.handshake_pending = False
+            self.sack_packets(sack_seqnos)
+            self.base_seqno = next(iter(self.unacked_packets), None)
+
+        print("All packets have been sent and acknowledged.")
 
     def retransmit_packet(self, seqno:int):
         '''
@@ -495,6 +420,9 @@ class Sender(BasicSender.BasicSender):
         print(f"Sender.py: Retransmitting packet with sequence no. {seqno}.")
         # check if packet still unacknowledged and the time-out retransmit limit
         item = self.unacked_packets.get(seqno, None)
+        if item and item.get('sacked'):
+            self.debug_print(f"Packet with seqno {seqno} has already been acknowledged. No retransmission needed.")
+            return False
         if item and item.get('timeout_retransmit_limit'):
             self.unacked_packets[seqno]['timeout_retransmit_limit'] -= 1
             self.debug_print("Timeout or triple ACK occurred.")
@@ -503,11 +431,10 @@ class Sender(BasicSender.BasicSender):
                 self.debug_print(f"Packet with seqno {seqno} not found in unacked_packets. Unable to retransmit.")
             else: 
                 self.debug_print(f"Max of time-out retransmissions has been reached")
-                self.close_app()
+                # close the app and exit - close_app handle this in the start() method
             return False
 
         # retransmit the packet with the given sequence number from the unacked_packets, and reset the ack_tracker counter for that sequence number to 0
-        self.debug_print(f"Retransmitting packet with seqno {seqno}.")
         self.single_send(seqno)
         self.ack_tracker[seqno] = 0
         return True
@@ -518,12 +445,19 @@ class Sender(BasicSender.BasicSender):
         '''
         # closing socket and app
         print("Closing client connection and app")
-        # self.sock.close()
+        # wait for late packets
+        print(f"Waiting for late packets...")
+        for counter in list(range(5)):
+            time.sleep(1)
+            print(f"{5-counter} seconds remaining.\r", end="")
+        self.debug_print("Closing socket.")
+        self.sock.close()
         exit()
 
     # Main sending loop.
     def start(self):
         # add things here
+        time.sleep(0.5) # wait for receiver to start up
         try:
             if self.debug and self.debug_print:
                 print("[Debug mode is enabled]")
