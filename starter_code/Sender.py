@@ -459,11 +459,18 @@ class Sender(BasicSender.BasicSender):
                     print(f"Sender.py: [error] Invalid ack received.")
                     responses.pop(largest_decoded, None)
 
-                    largest_decoded = max(responses.keys()) if responses else None
-                    ack_value = str(largest).encode('utf-8') if largest else b'0'
-                    largest = ack_value
-                    largest_seq = largest_decoded - 1 if largest_decoded else 0
-                    msg_type = responses[largest_decoded].split(b"|")[0] if largest_decoded else b''
+                    if responses:
+                        largest_decoded = max(responses.keys())
+                        ack_value = str(largest_decoded).encode("utf-8")
+                        largest = ack_value
+                        largest_seq = largest_decoded - 1
+                        msg_type = responses[largest_decoded].split(b"|")[0]
+                    else:
+                        largest_decoded = None
+                        ack_value = b"0"
+                        largest = ack_value
+                        largest_seq = 0
+                        msg_type = b""
                     continue
 
                 # if not - send remaining packets and await remaining acks, else end
@@ -538,7 +545,7 @@ class Sender(BasicSender.BasicSender):
             self.run()
         except Exception as e:
             print(f"Error opening file: {e}")
-        sys.exit(1)
+            sys.exit(1)
 '''
 This will be run if you run this script from the command line. You should not
 change any of this; the grader may rely on the behavior here to test your
